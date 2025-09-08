@@ -1,0 +1,6 @@
+<resources>
+    <string name="app_name">ZenRead</string>
+    <string name="recent_books">Mới đọc</string>
+    <string name="book_shelf">Giá Sách</string>
+    <string name="setting">Cài đặt</string>
+</resources>

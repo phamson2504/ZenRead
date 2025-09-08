@@ -1,3 +1,11 @@
 <resources>
     <string name="app_name">ZenRead</string>
+    <string name="recent_books">Recent Books</string>
+    <string name="book_shelf">Book Shelf</string>
+    <string name="setting">Settings</string>
+    <!-- TODO: Remove or change this placeholder text -->
+    <string name="hello_blank_fragment">Hello blank fragment</string>
+    <string name="navigation_drawer_open">open</string>
+    <string name="navigation_drawer_close">close</string>
+
 </resources>
