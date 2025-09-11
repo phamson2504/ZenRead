@@ -52,6 +52,9 @@ dependencies {
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
 
+    //fragment-ktx
+    implementation("androidx.fragment:fragment-ktx:1.6.2")
+
     // Hilt
     implementation("com.google.dagger:hilt-android:2.51.1")
     kapt("com.google.dagger:hilt-compiler:2.51.1")
@@ -68,6 +71,9 @@ dependencies {
     // glide
     implementation("com.github.bumptech.glide:glide:4.16.0")
     kapt ("com.github.bumptech.glide:compiler:4.16.0")
+
+    // SAF
+    implementation("com.anggrayudi:storage:2.0.0")
 
     // PDF Book
     implementation("com.tom-roush:pdfbox-android:2.0.27.0")

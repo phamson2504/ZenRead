@@ -1,11 +1,6 @@
-package com.zenread.book.data.dot
+package com.zenread.book.domain.model
 
-import androidx.room.Entity
-import androidx.room.PrimaryKey
-
-@Entity(tableName = "books")
 data class Book(
-    @PrimaryKey(autoGenerate = true)
     val id: Int = 0,
     val title: String,
     val author: String? = null,
@@ -13,6 +8,6 @@ data class Book(
     val description: String? = null,
     val categoryId: Int? = 0,
     val typeFile: String,
-    val addedAt: Long,
+    val coverImagePath: String? = null,
     val lastOpened: Long? = null
 )

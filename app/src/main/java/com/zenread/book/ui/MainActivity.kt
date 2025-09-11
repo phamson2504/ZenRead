@@ -1,22 +1,26 @@
-package com.zenread.book.presentation.feature.main
+package com.zenread.book.ui
 
 import android.os.Bundle
 import android.view.MenuItem
+import android.widget.PopupMenu
 import android.widget.Toast
 import androidx.activity.addCallback
-import androidx.appcompat.app.ActionBarDrawerToggle
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.GravityCompat
+import androidx.core.view.WindowCompat
 import com.google.android.material.navigation.NavigationView
 import com.zenread.book.R
 import com.zenread.book.databinding.ActivityMainBinding
-import com.zenread.book.presentation.feature.book.BookFragment
+import com.zenread.book.ui.book.BookFragment
 
 class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelectedListener {
     private lateinit var binding: ActivityMainBinding
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
@@ -32,10 +36,13 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
         binding.navView.setNavigationItemSelectedListener(this)
 
         if (savedInstanceState == null) {
-            supportFragmentManager.beginTransaction()
-                .replace(R.id.main_fragment, BookFragment())
-                .commit()
+            val defaultItem = binding.navView.menu.findItem(R.id.nav_recent_books)
+            defaultItem.isChecked = true
+            onNavigationItemSelected(defaultItem)
         }
+
+        //setup optionMenu
+        setupOptionMenu()
 
         onBackPressedDispatcher.addCallback(this) {
             if (binding.drawerLayout.isDrawerOpen(GravityCompat.START)) {
@@ -46,6 +53,29 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
         }
     }
 
+    private fun setupOptionMenu() {
+        val popupMenu = PopupMenu(this, binding.toolbar.icOptionMenu).apply {
+            menuInflater.inflate(R.menu.op_menu, menu)
+            setOnMenuItemClickListener { item ->
+                when (item.itemId) {
+                    R.id.om_add_file -> {
+                        true
+                    }
+
+                    else -> false
+                }
+            }
+        }
+
+        binding.toolbar.icOptionMenu.setOnClickListener {
+            popupMenu.show()
+        }
+    }
+
+    fun setToolbarTitle(title: String) {
+        binding.toolbar.tbTitle.text = title
+    }
+
     override fun onNavigationItemSelected(item: MenuItem): Boolean {
         when (item.itemId) {
             R.id.nav_recent_books -> {
@@ -53,9 +83,11 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
                     .replace(R.id.main_fragment, BookFragment())
                     .commit()
             }
+
             R.id.nav_bookshelf -> {
                 Toast.makeText(this, "Bookshelf clicked", Toast.LENGTH_SHORT).show()
             }
+
             R.id.nav_settings -> {
                 Toast.makeText(this, "Settings clicked", Toast.LENGTH_SHORT).show()
             }
@@ -63,5 +95,4 @@ class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelecte
         binding.drawerLayout.closeDrawer(GravityCompat.START)
         return true
     }
-
 }
