@@ -30,6 +30,7 @@ class PdfFileConvert @Inject constructor(
                 author = author,
                 description = description,
                 filePath = cachedFileWrapper.path,
+                uri = cachedFileWrapper.uri.toString(),
                 typeFile = typeFile,
             )
         } catch (e: Exception) {

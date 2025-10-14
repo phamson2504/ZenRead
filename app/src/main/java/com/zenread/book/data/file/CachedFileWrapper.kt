@@ -58,29 +58,29 @@ class CachedFileWrapper(
             childrenUri,
             null, null, null, null
         )?.use { cursor ->
+            try {
+                val nameIndex = cursor.getColumnIndexOrThrow(COLUMN_NAME)
+                val documentIdIndex = cursor.getColumnIndexOrThrow(COLUMN_DOCUMENT_ID)
+                val sizeIndex = cursor.getColumnIndexOrThrow(COLUMN_SIZE)
+                val lastModifiedIndex = cursor.getColumnIndexOrThrow(COLUMN_LAST_MODIFIED)
+                val mimeTypeIndex = cursor.getColumnIndexOrThrow(COLUMN_MIME_TYPE)
 
-            val nameIndex = cursor.getColumnIndex(COLUMN_NAME)
-            val documentIdIndex = cursor.getColumnIndex(COLUMN_DOCUMENT_ID)
-            val sizeIndex = cursor.getColumnIndex(COLUMN_SIZE)
-            val lastModifiedIndex = cursor.getColumnIndex(COLUMN_LAST_MODIFIED)
-            val mimeTypeIndex = cursor.getColumnIndex(COLUMN_MIME_TYPE)
+                while (cursor.moveToNext()) {
+                    val childName = cursor.getString(nameIndex)
+                    //chill uri
+                    val childId = cursor.getString(documentIdIndex)
+                    val childUri = DocumentsContract.buildDocumentUriUsingTree(uri, childId)
+                    //chill size
+                    val childSize = if (sizeIndex >= 0) cursor.getLong(sizeIndex) else 0L
+                    //chillModified
+                    val childLastModified =
+                        if (lastModifiedIndex >= 0) cursor.getLong(lastModifiedIndex) else 0L
+                    //childIsDirectory
+                    val mimeType = if (mimeTypeIndex >= 0) cursor.getString(mimeTypeIndex) else null
+                    val childIsDirectory = mimeType == DocumentsContract.Document.MIME_TYPE_DIR
 
-            while (cursor.moveToNext()) {
-                val childName = cursor.getString(nameIndex)
-                //chill uri
-                val childId = cursor.getString(documentIdIndex)
-                val childUri = DocumentsContract.buildDocumentUriUsingTree(uri, childId)
-                //chill size
-                val childSize = if (sizeIndex >= 0) cursor.getLong(sizeIndex) else 0L
-                //chillModified
-                val childLastModified =
-                    if (lastModifiedIndex >= 0) cursor.getLong(lastModifiedIndex) else 0L
-                //childIsDirectory
-                val mimeType = if (mimeTypeIndex >= 0) cursor.getString(mimeTypeIndex) else null
-                val childIsDirectory = mimeType == DocumentsContract.Document.MIME_TYPE_DIR
 
-                listFileResults.add(
-                    CachedFileWrapper(
+                    val cachedFileWrapper = CachedFileWrapper(
                         context,
                         childUri,
                         CachedFileBuilder(
@@ -91,7 +91,11 @@ class CachedFileWrapper(
                             isDirectory = childIsDirectory
                         )
                     )
-                )
+
+                    listFileResults.add(cachedFileWrapper)
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
         }
         return listFileResults
@@ -119,43 +123,48 @@ class CachedFileWrapper(
             projection.toTypedArray(),
             null, null, null
         )?.use { cursor ->
-            if (cursor.moveToFirst()) {
-                var nameValue = builder?.name
-                var sizeValue = builder?.size
-                var lastModifiedValue = builder?.lastModified
-                var isDirectoryValue = builder?.isDirectory
+            try {
+                if (cursor.moveToFirst()) {
+                    var nameValue = builder?.name
+                    var sizeValue = builder?.size
+                    var lastModifiedValue = builder?.lastModified
+                    var isDirectoryValue = builder?.isDirectory
 
-                projection.forEach { column ->
-                    when (column) {
-                        COLUMN_NAME -> if (nameValue == null) {
-                            nameValue = cursor.getString(cursor.getColumnIndexOrThrow(column))
-                        }
+                    projection.forEach { column ->
+                        when (column) {
+                            COLUMN_NAME -> if (nameValue == null) {
+                                nameValue = cursor.getString(cursor.getColumnIndexOrThrow(column))
+                            }
 
-                        COLUMN_SIZE -> if (sizeValue == null) {
-                            sizeValue = cursor.getLong(cursor.getColumnIndexOrThrow(column))
-                        }
+                            COLUMN_SIZE -> if (sizeValue == null) {
+                                sizeValue = cursor.getLong(cursor.getColumnIndexOrThrow(column))
+                            }
 
-                        COLUMN_LAST_MODIFIED -> if (lastModifiedValue == null) {
-                            lastModifiedValue = cursor.getLong(cursor.getColumnIndexOrThrow(column))
-                        }
+                            COLUMN_LAST_MODIFIED -> if (lastModifiedValue == null) {
+                                lastModifiedValue =
+                                    cursor.getLong(cursor.getColumnIndexOrThrow(column))
+                            }
 
-                        COLUMN_MIME_TYPE -> if (isDirectoryValue == null) {
-                            isDirectoryValue =
-                                when (cursor.getString(cursor.getColumnIndexOrThrow(column))) {
-                                    DocumentsContract.Document.MIME_TYPE_DIR -> true
-                                    null -> null
-                                    else -> false
-                                }
+                            COLUMN_MIME_TYPE -> if (isDirectoryValue == null) {
+                                isDirectoryValue =
+                                    when (cursor.getString(cursor.getColumnIndexOrThrow(column))) {
+                                        DocumentsContract.Document.MIME_TYPE_DIR -> true
+                                        null -> null
+                                        else -> false
+                                    }
+                            }
                         }
                     }
-                }
 
-                return BookFileInfo(
-                    name = nameValue ?: "unknown_${UUID.randomUUID()}",
-                    size = sizeValue ?: 0,
-                    lastModified = lastModifiedValue ?: 0,
-                    isDirectory = isDirectoryValue ?: false
-                )
+                    return BookFileInfo(
+                        name = nameValue ?: "unknown_${UUID.randomUUID()}",
+                        size = sizeValue ?: 0,
+                        lastModified = lastModifiedValue ?: 0,
+                        isDirectory = isDirectoryValue ?: false
+                    )
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
         }
 
@@ -175,6 +184,7 @@ class CachedFileWrapper(
             null
         }
     }
+
     private fun getFilePath(): String {
         val tempFile = DocumentFileCompat.fromUri(context, uri)
         return tempFile?.getAbsolutePath(context)?.trimEnd('/') ?: ""

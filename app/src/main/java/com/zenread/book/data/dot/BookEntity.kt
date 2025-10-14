@@ -9,6 +9,7 @@ data class BookEntity(
     val id: Int = 0,
     val title: String,
     val author: String? = null,
+    val uri: String,
     val filePath: String,
     val description: String? = null,
     val categoryId: Int? = 0,

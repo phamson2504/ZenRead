@@ -18,6 +18,9 @@ interface BookDao {
     )
     suspend fun getBookByTile(title: String): List<BookEntity>
 
+    @Query("SELECT * FROM books")
+    suspend fun getBooks(): List<BookEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(bookEntity: BookEntity)
 

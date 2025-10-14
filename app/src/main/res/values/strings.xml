@@ -7,5 +7,12 @@
     <string name="navigation_drawer_close">close</string>
     <string name="add_file">Add file</string>
     <string name="sort_by">Sort by</string>
+    <string name="select_doc_folder">📁 Select document folder</string>
+    <string name="select_single_file">📄 Select Single File</string>
+    <string name="file_manager">File Manager</string>
+    <string name="import_book_failed">Failed to import file to book</string>
+    <string name="no_data">No data</string>
+    <string name="error_load_file">Can\'t Load File</string>
+    <string name="num_fail_file">Load failed %d file</string>
 
 </resources>

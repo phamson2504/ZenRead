@@ -6,4 +6,6 @@ interface BookRepository {
     suspend fun getBookByTile(title: String): List<Book>
     suspend fun insertBook(book: Book)
     suspend fun insertBooks(books: List<Book>)
+
+    suspend fun getBooks(): List<Book>
 }

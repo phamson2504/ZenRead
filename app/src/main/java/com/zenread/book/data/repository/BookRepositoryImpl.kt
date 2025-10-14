@@ -26,4 +26,11 @@ class BookRepositoryImpl@Inject constructor(
         val bookList = books.map { BookMapper.toBookEntity(it) }
         bookDao.insertAll(bookList)
     }
+
+    override suspend fun getBooks(): List<Book> {
+        val books =  bookDao.getBooks()
+        return books.map { bookEntity ->
+            BookMapper.toBook(bookEntity)
+        }
+    }
 }

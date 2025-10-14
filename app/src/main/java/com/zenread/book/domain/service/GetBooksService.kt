@@ -7,7 +7,7 @@ import javax.inject.Inject
 class GetBooksService @Inject constructor(
     private val bookRepository: BookRepository
 ) {
-    suspend fun findBooksByTitle(title: String): List<Book> {
-        return bookRepository.getBookByTile(title)
+    suspend fun getBooks(): List<Book> {
+        return bookRepository.getBooks()
     }
 }

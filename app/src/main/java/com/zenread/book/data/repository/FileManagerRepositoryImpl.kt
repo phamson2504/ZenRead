@@ -6,7 +6,7 @@ import com.zenread.book.data.file.CachedFileWrapper
 import com.zenread.book.domain.model.CachedFileBuilder
 import com.zenread.book.domain.repository.FileManagerRepository
 import com.zenread.book.domain.service.GetBooksService
-import com.zenread.book.utils.Constants
+import com.zenread.book.core.utils.Constants
 import java.util.UUID
 import javax.inject.Inject
 
@@ -16,8 +16,7 @@ class FileManagerRepositoryImpl @Inject constructor(
 ) : FileManagerRepository {
 
     override suspend fun getListFiles(query: String): List<CachedFileWrapper> {
-        listPathExitDbAndStore.clear()
-        val currentPaths = booksService.findBooksByTitle("").map { it.filePath }
+        val currentPaths = booksService.getBooks().map { it.filePath }
 
         fun CachedFileWrapper.isValid(): Boolean {
             if (!Constants.fileTypeAccess.any { ext ->
@@ -28,7 +27,6 @@ class FileManagerRepositoryImpl @Inject constructor(
             if (currentPaths.any { currentPath ->
                     currentPath.equals(path, ignoreCase = true)
                 }) {
-                listPathExitDbAndStore.add(path)
                 return false
             }
             return true
@@ -60,12 +58,17 @@ class FileManagerRepositoryImpl @Inject constructor(
             return accessedFiles
         }
 
-        val getAllFile = getAllFile()
-        val files = mutableListOf<CachedFileWrapper>()
-        for (file in getAllFile) {
-            files.addAll(file.getFilesFromStorage())
+        return try {
+            val getAllFile = getAllFile()
+            val files = mutableListOf<CachedFileWrapper>()
+            for (file in getAllFile) {
+                files.addAll(file.getFilesFromStorage())
+            }
+            files
+        } catch (e: Exception) {
+            e.printStackTrace()
+            emptyList()
         }
-        return files
     }
 
     override suspend fun getAllFile(): List<CachedFileWrapper> {

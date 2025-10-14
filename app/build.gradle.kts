@@ -2,6 +2,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.hilt)
+    alias(libs.plugins.kotlin.parcelize)
     kotlin("kapt")
 }
 
@@ -56,8 +57,8 @@ dependencies {
     implementation("androidx.fragment:fragment-ktx:1.6.2")
 
     // Hilt
-    implementation("com.google.dagger:hilt-android:2.51.1")
-    kapt("com.google.dagger:hilt-compiler:2.51.1")
+    implementation("com.google.dagger:hilt-android:2.56.2")
+    kapt("com.google.dagger:hilt-compiler:2.56.2")
 
     // Room
     implementation("androidx.room:room-runtime:2.7.1")
@@ -81,4 +82,7 @@ dependencies {
 
     //ebook
     implementation("org.jsoup:jsoup:1.18.3")
+
+    //photoview
+    implementation("com.github.chrisbanes:PhotoView:2.3.0")
 }

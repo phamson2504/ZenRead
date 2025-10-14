@@ -1,28 +1,30 @@
-package com.zenread.book.ui
+package com.zenread.book.presentation
 
+import android.content.Intent
 import android.os.Bundle
+import android.view.LayoutInflater
 import android.view.MenuItem
 import android.widget.PopupMenu
 import android.widget.Toast
 import androidx.activity.addCallback
-import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.GravityCompat
 import androidx.core.view.WindowCompat
 import com.google.android.material.navigation.NavigationView
 import com.zenread.book.R
+import com.zenread.book.core.base.BaseActivity
 import com.zenread.book.databinding.ActivityMainBinding
-import com.zenread.book.ui.book.BookFragment
+import com.zenread.book.presentation.book.ui.BookFragment
+import dagger.hilt.android.AndroidEntryPoint
 
-class MainActivity : AppCompatActivity(), NavigationView.OnNavigationItemSelectedListener {
-    private lateinit var binding: ActivityMainBinding
+@AndroidEntryPoint
+class MainActivity : BaseActivity<ActivityMainBinding>(),
+    NavigationView.OnNavigationItemSelectedListener {
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+    override fun inflateBinding(layoutInflater: LayoutInflater) =
+        ActivityMainBinding.inflate(layoutInflater)
 
+    override fun setupView(savedInstanceState: Bundle?) {
         WindowCompat.setDecorFitsSystemWindows(window, false)
-
-        binding = ActivityMainBinding.inflate(layoutInflater)
-        setContentView(binding.root)
 
         // Set up toolbar
         setSupportActionBar(binding.toolbar.customToolbar)

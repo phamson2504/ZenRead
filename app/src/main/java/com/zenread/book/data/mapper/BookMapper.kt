@@ -8,6 +8,7 @@ object BookMapper {
         return BookEntity(
             id = book.id,
             title = book.title,
+            uri = book.uri,
             filePath = book.filePath,
             description = book.description,
             author = book.author,
@@ -18,6 +19,7 @@ object BookMapper {
         return Book(
             id = book.id,
             title = book.title,
+            uri = book.uri,
             filePath = book.filePath,
             description = book.description,
             author = book.author,
