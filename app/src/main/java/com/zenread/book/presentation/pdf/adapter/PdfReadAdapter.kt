@@ -1,130 +1,41 @@
 package com.zenread.book.presentation.pdf.adapter
 
+import android.annotation.SuppressLint
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.graphics.Color
-import android.graphics.PointF
-import android.graphics.RectF
 import android.util.Size
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import android.widget.ImageView
 import androidx.recyclerview.widget.RecyclerView
 import com.zenread.book.databinding.ItemPdfPageBinding
-import com.zenread.book.presentation.pdf.MarksState
 import com.zenread.book.presentation.pdf.PageMark
-import com.zenread.book.presentation.pdf.PointerIndex
-import java.lang.ref.WeakReference
 
 class PdfReadAdapter(
+    private val confirmedHighlight: Map<Int, MutableList<PageMark>>,
+    private val selectedMarksOfPage: Map<Int, PageMark>,
     private var pageSizes: List<Size>
 ) : RecyclerView.Adapter<PdfReadAdapter.PageViewHolder>() {
 
+    val idRemoveMap = mutableMapOf<Int, Long?>()
     val bitmaps = mutableMapOf<Int, Bitmap>()
 
-    val pageMarks: MutableMap<Int, PageMark> = mutableMapOf()
-    var startPointer: PointerIndex? = null
-    var endPointer: PointerIndex? = null
 
-    fun updatePointer(
-        startPointerIndex: PointerIndex,
-        endPointerIndex: PointerIndex
-    ) {
-        startPointer = startPointerIndex
-        endPointer = endPointerIndex
-        notifyItemChanged(startPointer!!.pageIndex, "startPointer")
-        notifyItemChanged(endPointer!!.pageIndex, "endPointer")
+    fun updateSelectedMarks(pageIndex: Int) {
+        notifyItemChanged(pageIndex, "selectedMarks")
     }
 
-    fun hideStartPointer(pageIndex: Int) {
-        val startHolder = getHolderAt(pageIndex)
-        startHolder?.binding?.marksOverlay?.removeStartPointer()
+    fun updateConfirmedMarks(pageIndex: Int) {
+        notifyItemChanged(pageIndex, "confirmedMarks")
     }
 
-    fun hideEndPointer(pageIndex: Int) {
-        val endHolder = getHolderAt(pageIndex)
-        endHolder?.binding?.marksOverlay?.removeEndPointer()
-    }
-
-    fun visibleStartPointer() {
-        val startHolder = getHolderAt(startPointer!!.pageIndex)
-        startHolder?.binding?.marksOverlay?.setStartPointerPosition(startPointer!!.pointF)
-    }
-
-    fun visibleEndPointer() {
-        val endHolder = getHolderAt(endPointer!!.pageIndex)
-        endHolder?.binding?.marksOverlay?.setEndPointerPosition(endPointer!!.pointF)
-    }
-
-    fun reSizePointer(startPointerIndex: Int, endPointerIndex: Int, size: Int) {
-        if (startPointerIndex == endPointerIndex) {
-            val startHolder = getHolderAt(startPointerIndex)
-            startHolder?.binding?.marksOverlay?.reSizePointer(size)
-        } else {
-            val startHolder = getHolderAt(startPointerIndex)
-            startHolder?.binding?.marksOverlay?.reSizePointer(size)
-            val endHolder = getHolderAt(endPointerIndex)
-            endHolder?.binding?.marksOverlay?.reSizePointer(size)
-        }
-
-    }
-
-    fun updateMarks(pageIndex: Int, marks: List<RectF>) {
-        if (marks.isEmpty()) {
-            pageMarks.remove(pageIndex)
-        }else{
-            pageMarks[pageIndex] = PageMark(MarksState.LONG_PRESSED, marks)
-        }
-        notifyItemChanged(pageIndex, "marks")
+    fun removeConfirmedMarks(pageIndex: Int, confirmId: Long?) {
+        idRemoveMap[pageIndex] = confirmId
     }
 
 
     inner class PageViewHolder(val binding: ItemPdfPageBinding) :
-        RecyclerView.ViewHolder(binding.root) {
-        fun isTouchOnStartPointer(x: Float, y: Float): PointF? {
-            return binding.marksOverlay.isTouchOnStartPointer(x, y)
-        }
-
-        fun isTouchOnEndPointer(x: Float, y: Float): PointF? {
-            return binding.marksOverlay.isTouchOnEndPointer(x, y)
-        }
-
-        fun removeStartPointer() {
-            binding.marksOverlay.removeStartPointer()
-        }
-
-        fun removeEndPointer() {
-            binding.marksOverlay.removeEndPointer()
-        }
-    }
-
-    fun isTouchOnPointerAt(
-        recyclerView: RecyclerView,
-        pageIndex: Int,
-        x: Float,
-        y: Float
-    ): Pair<String, PointF>? {
-        val holder = recyclerView.findViewHolderForAdapterPosition(pageIndex) as? PageViewHolder
-            ?: return null
-        val startOffset = holder.isTouchOnStartPointer(x, y)
-        val endOffset = holder.isTouchOnEndPointer(x, y)
-
-        return when {
-            startOffset != null -> {
-                holder.removeStartPointer()
-                startPointer = null
-                "start" to startOffset
-            }
-
-            endOffset != null -> {
-                holder.removeEndPointer()
-                endPointer = null
-                "end" to endOffset
-            }
-
-            else -> null
-        }
-    }
+        RecyclerView.ViewHolder(binding.root)
 
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): PageViewHolder {
@@ -167,42 +78,32 @@ class PdfReadAdapter(
         overlay.layoutParams.height = pageSizes[position].height
         overlay.requestLayout()
 
-        val marks = pageMarks[position]?.marks
+        val marks = selectedMarksOfPage[position]?.marks
         if (marks.isNullOrEmpty()) {
-            overlay.clearMarks()
+            overlay.clearSelectedMarks()
         } else {
-            overlay.setMarks(marks)
+            overlay.setSelectedMarks(marks)
         }
 
-        if (startPointer?.pageIndex == position) {
-            overlay.setStartPointerPosition(startPointer!!.pointF)
+        val confirmedHighlight = confirmedHighlight[position]
+        if (confirmedHighlight != null) {
+            confirmedHighlight.forEach { mark ->
+                {
+                    mark.confirmId?.let {
+                        overlay.setConfirmMarks(
+                            it,
+                            mark.marks,
+                            mark.color,
+                            mark.contentNote,
+                            mark.isFirstPageMark
+                        )
+                    }
+                }
+            }
+
         } else {
-            overlay.removeStartPointer()
+            overlay.clearConfirmMarks()
         }
-
-        // --- 5️⃣ Hiển thị hoặc reset endPointer ---
-        if (endPointer?.pageIndex == position) {
-            overlay.setEndPointerPosition(endPointer!!.pointF)
-        } else {
-            overlay.removeEndPointer()
-        }
-    }
-
-    private var recyclerViewRef: WeakReference<RecyclerView>? = null
-
-    override fun onAttachedToRecyclerView(recyclerView: RecyclerView) {
-        super.onAttachedToRecyclerView(recyclerView)
-        recyclerViewRef = WeakReference(recyclerView)
-    }
-
-    override fun onDetachedFromRecyclerView(recyclerView: RecyclerView) {
-        super.onDetachedFromRecyclerView(recyclerView)
-        recyclerViewRef = null
-    }
-
-    private fun getHolderAt(pageIndex: Int): PageViewHolder? {
-        val recyclerView = recyclerViewRef?.get() ?: return null
-        return recyclerView.findViewHolderForAdapterPosition(pageIndex) as? PageViewHolder
     }
 
     override fun onBindViewHolder(
@@ -226,26 +127,28 @@ class PdfReadAdapter(
                         }
                     }
 
-                    "marks" -> {
-                        val marks = pageMarks[position]?.marks ?: emptyList()
-                        overlay.setMarks(marks)
+                    "selectedMarks" -> {
+                        val marks = selectedMarksOfPage[position]?.marks ?: emptyList()
+                        overlay.setSelectedMarks(marks)
                     }
 
-                    "startPointer" -> {
-                        if (startPointer?.pageIndex == position) {
-                            startPointer?.let { overlay.setStartPointerPosition(it.pointF) }
+                    "confirmedMarks" -> {
+                        if (idRemoveMap[position] != null) {
+                            idRemoveMap[position]?.let { overlay.removeHighlight(it) }
+                            idRemoveMap.remove(position)
                         }
-                        if (startPointer == null) {
-                            overlay.removeStartPointer()
-                        }
-                    }
 
-                    "endPointer" -> {
-                        if (endPointer?.pageIndex == position) {
-                            endPointer?.let { overlay.setEndPointerPosition(it.pointF) }
-                        }
-                        if (endPointer == null) {
-                            overlay.removeEndPointer()
+                        val confirmedHighlight = confirmedHighlight[position]
+                        confirmedHighlight?.forEach { mark ->
+                            mark.confirmId?.let {
+                                overlay.setConfirmMarks(
+                                    it,
+                                    mark.marks,
+                                    mark.color,
+                                    mark.contentNote,
+                                    mark.isFirstPageMark
+                                )
+                            }
                         }
                     }
                 }
@@ -255,9 +158,9 @@ class PdfReadAdapter(
         }
     }
 
-
     override fun getItemCount(): Int = pageSizes.size
 
+    @SuppressLint("NotifyDataSetChanged")
     fun updatePageSizes(newSizes: List<Size>) {
         pageSizes = newSizes
         bitmaps.clear()

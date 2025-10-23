@@ -1,0 +1,167 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:orientation="vertical"
+    android:padding="8dp"
+    android:background="#72EBEBEB"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:gravity="center">
+
+    <!-- Dòng chọn màu -->
+    <LinearLayout
+        android:id="@+id/colorPalette"
+        android:orientation="horizontal"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center_horizontal"
+        android:paddingBottom="8dp" />
+
+    <LinearLayout
+        android:id="@+id/layoutActionRoot"
+        android:orientation="horizontal"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:gravity="center">
+
+        <LinearLayout
+            android:id="@+id/layoutDelete"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:paddingHorizontal="10dp"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:visibility="gone">
+
+            <ImageView
+                android:id="@+id/btnDelete"
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:src="@drawable/ic_delete"
+                android:contentDescription="Delete" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Delete"
+                android:textSize="12sp"
+                android:textColor="@android:color/black" />
+        </LinearLayout>
+
+        <!-- Copy -->
+        <LinearLayout
+            android:id="@+id/layoutCopy"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:paddingHorizontal="10dp"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content">
+
+            <ImageView
+                android:id="@+id/btnCopy"
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:src="@drawable/ic_copy"
+                android:contentDescription="Copy" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Copy"
+                android:textSize="12sp"
+                android:textColor="@android:color/black" />
+        </LinearLayout>
+
+        <!-- Translate -->
+        <LinearLayout
+            android:id="@+id/layoutTranslate"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:paddingHorizontal="10dp"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content">
+            <ImageView
+                android:id="@+id/btnTranslate"
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:src="@drawable/ic_translate"
+                android:contentDescription="Translate" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Translate"
+                android:textSize="12sp"
+                android:textColor="@android:color/black" />
+        </LinearLayout>
+        <LinearLayout
+            android:id="@+id/layoutDictionary"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:paddingHorizontal="10dp">
+            <ImageView
+                android:id="@+id/btnDictionary"
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:src="@drawable/ic_dictionary"/>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Dictionary"
+                android:textSize="12sp"
+                android:textColor="@android:color/black" />
+        </LinearLayout>
+        <!-- Note -->
+        <LinearLayout
+            android:id="@+id/layoutNote"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:paddingHorizontal="10dp"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content">
+
+            <ImageView
+                android:id="@+id/btnNote"
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:src="@drawable/ic_note"
+                android:contentDescription="Note" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Note"
+                android:textSize="12sp"
+                android:textColor="@android:color/black" />
+        </LinearLayout>
+
+        <!-- More -->
+        <LinearLayout
+            android:id="@+id/layoutMore"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:paddingHorizontal="10dp"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content">
+
+            <ImageView
+                android:id="@+id/btnMore"
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                app:tint="#424242"
+                android:src="@drawable/ic_more_vert"
+                android:contentDescription="More" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="More"
+                android:textSize="12sp"
+                android:textColor="@android:color/black" />
+        </LinearLayout>
+    </LinearLayout>
+
+</LinearLayout>

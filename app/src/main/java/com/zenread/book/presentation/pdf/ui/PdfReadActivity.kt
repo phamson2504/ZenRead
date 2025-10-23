@@ -1,44 +1,58 @@
 package com.zenread.book.presentation.pdf.ui
 
+import android.app.AlertDialog
+import android.content.Context
+import android.content.Intent
 import android.content.res.Resources
 import android.graphics.Bitmap
 import android.graphics.Canvas
-import android.graphics.Matrix
+import android.graphics.Color
 import android.graphics.PointF
 import android.graphics.RectF
+import android.net.Uri
 import android.os.Bundle
 import android.util.Log
-import android.view.GestureDetector
+import android.util.SizeF
 import android.view.LayoutInflater
-import android.view.MotionEvent
-import android.view.ScaleGestureDetector
-import android.widget.ImageView
-import android.widget.OverScroller
+import android.view.View
+import android.view.WindowManager
+import android.view.inputmethod.InputMethodManager
+import android.widget.EditText
 import android.widget.Toast
 import androidx.activity.viewModels
 import androidx.core.graphics.createBitmap
 import androidx.core.graphics.withTranslation
 import androidx.core.net.toUri
-import androidx.core.view.get
 import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
+import com.zenread.book.R
 import com.zenread.book.core.base.BaseActivity
+import com.zenread.book.core.utils.Constants.POINTER_BORDER_SPACING
 import com.zenread.book.databinding.ActivityPdfReadBinding
+import com.zenread.book.databinding.DialogAddNoteBinding
 import com.zenread.book.domain.model.Book
 import com.zenread.book.domain.model.WordInfo
+import com.zenread.book.presentation.pdf.MarksState
+import com.zenread.book.presentation.pdf.PageMark
 import com.zenread.book.presentation.pdf.PointerIndex
 import com.zenread.book.presentation.pdf.ScrollLinearLayoutManager
 import com.zenread.book.presentation.pdf.adapter.PdfReadAdapter
+import com.zenread.book.presentation.pdf.gesture.PdfTouchHandler
 import com.zenread.book.presentation.pdf.model.PdfReadViewModel
+import com.zenread.book.presentation.pdf.popup.OnTextActionListener
+import com.zenread.book.presentation.pdf.popup.PopupTextAction
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
 import kotlin.math.abs
+import kotlin.math.sqrt
 
 @AndroidEntryPoint
-class PdfReadActivity : BaseActivity<ActivityPdfReadBinding>() {
+class PdfReadActivity : BaseActivity<ActivityPdfReadBinding>(),
+    PdfTouchHandler.OnPdfTouchListener,
+    OnTextActionListener {
 
     private val viewModel: PdfReadViewModel by viewModels()
 
@@ -46,11 +60,17 @@ class PdfReadActivity : BaseActivity<ActivityPdfReadBinding>() {
 
     private lateinit var adapter: PdfReadAdapter
 
-    private var startPointer: PointerIndex? = null
+    private lateinit var pdfTouchHandler: PdfTouchHandler
 
-    private var endPointer: PointerIndex? = null
+    private lateinit var popupTextAction: PopupTextAction
 
-    var zoomMode = false
+    private var startPointerInPage: PointerIndex? = null
+    private var endPointerInPage: PointerIndex? = null
+
+    private var selectedHighlights: MutableMap<Int, PageMark> = mutableMapOf()
+
+    private var confirmedHighlight: MutableMap<Int, MutableList<PageMark>> = mutableMapOf()
+
 
     override fun inflateBinding(layoutInflater: LayoutInflater) =
         ActivityPdfReadBinding.inflate(layoutInflater)
@@ -70,7 +90,7 @@ class PdfReadActivity : BaseActivity<ActivityPdfReadBinding>() {
 
         val screenWidth = Resources.getSystem().displayMetrics.widthPixels
 
-        adapter = PdfReadAdapter(emptyList())
+        adapter = PdfReadAdapter(confirmedHighlight, selectedHighlights, emptyList())
         recyclerView.adapter = adapter
 
         // Load PDF
@@ -95,323 +115,63 @@ class PdfReadActivity : BaseActivity<ActivityPdfReadBinding>() {
             }
         })
         binding.ivTemp.isVisible = false
-        scroller = OverScroller(this)
-        var ignoreNextMove = false
-        var dragOffset: PointF? = null
-        var activePointerType: String? = null
-        val gestureDetector =
-            GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
-                override fun onLongPress(e: MotionEvent) {
-                    val child = binding.pdfRecyclerView.findChildViewUnder(e.x, e.y)
-                    if (child != null) {
-                        val pageIndex = binding.pdfRecyclerView.getChildAdapterPosition(child)
-
-                        val coordinatesPdfTouch = viewModel.coordinatesPdfTouch(
-                            child.width,
-                            child.height,
-                            e.x,
-                            e.y - child.y,
-                            pageIndex,
-                        )
-                        if (coordinatesPdfTouch.isNotEmpty()) {
-                            val sorted = coordinatesPdfTouch.sortedWith(
-                                compareBy<RectF> { it.top }
-                                    .thenBy { it.left }
-                            )
-
-                            if (startPointer != null && endPointer != null) {
-                                adapter.hideStartPointer(startPointer!!.pageIndex)
-                                adapter.hideEndPointer(endPointer!!.pageIndex)
-                            }
-
-                            val wordInAdapter = adapter.pageMarks
-                            wordInAdapter.keys.forEach {
-                                adapter.updateMarks(it, emptyList())
-                            }
-
-                            startPointer = PointerIndex(
-                                pageIndex,
-                                PointF(sorted.first().left, sorted.first().bottom)
-                            )
-                            endPointer = PointerIndex(
-                                pageIndex,
-                                PointF(sorted.last().right, sorted.last().bottom)
-                            )
-
-                            if (coordinatesPdfTouch.isNotEmpty()) {
-                                adapter.updatePointer(startPointer!!, endPointer!!)
-                                adapter.updateMarks(pageIndex, coordinatesPdfTouch)
-                            }
-                        }
-
-                    }
-                }
-            })
-
-        binding.gestureOverlay.setOnTouchListener { _, event ->
-            gestureDetector.onTouchEvent(event)
-            when (event.actionMasked) {
-                MotionEvent.ACTION_DOWN -> {
-                    if (!zoomMode) {
-                        // Dừng fling nếu đang chạy
-                        if (!scroller.isFinished) scroller.abortAnimation()
-
-                        lastX = event.rawX
-                        lastY = event.rawY
-                        lastTime = event.eventTime
-
-                        prevX = lastX
-                        prevY = lastY
-                        prevTime = lastTime
-
-                        posX = binding.container.translationX
-                        posY = binding.container.translationY
-
-                        val child = binding.pdfRecyclerView.findChildViewUnder(event.x, event.y)
-                        if (child != null) {
-                            val pageIndex = binding.pdfRecyclerView.getChildAdapterPosition(child)
-
-                            // 2. Tính toạ độ local trong page (tương đối với view con)
-                            val childLocation = IntArray(2)
-                            child.getLocationOnScreen(childLocation)
-
-                            val result = adapter.isTouchOnPointerAt(
-                                binding.pdfRecyclerView,
-                                pageIndex,
-                                event.x,
-                                event.y - child.top
-                            )
-                            when (result?.first) {
-                                "start" -> {
-                                    val offset = result.second
-                                    binding.highlightPointerView.setStartPointerPosition(
-                                        PointF(
-                                            event.x - offset.x,
-                                            event.y - offset.y
-                                        )
-                                    )
-                                    dragOffset = offset
-                                    activePointerType = "start"
-                                }
-
-                                "end" -> {
-                                    Log.d(
-                                        "PdfDebug",
-                                        "Touch on END pointer at page $pageIndex at  ${result.second}"
-                                    )
-                                    val offset = result.second
-                                    binding.highlightPointerView.setEndPointerPosition(
-                                        PointF(
-                                            event.x - offset.x,
-                                            event.y - offset.y
-                                        )
-                                    )
-                                    dragOffset = offset
-                                    activePointerType = "end"
-                                }
-                            }
-                        }
-                    }
-
-                }
-
-                MotionEvent.ACTION_POINTER_DOWN -> {
-                    if (!zoomMode && event.pointerCount >= 2) {
-                        adapter.hideStartPointer(startPointer!!.pageIndex)
-                        adapter.hideEndPointer(endPointer!!.pageIndex)
-                        recyclerView.post {
-                            val (bmp, offset) = captureItemsWithOffset(binding.pdfRecyclerView)
-                            binding.ivTemp.apply {
-                                scaleType = ImageView.ScaleType.MATRIX
-                                setImageBitmap(bmp)
-                                val matrix = Matrix()
-                                matrix.postTranslate(0f, -offset.toFloat())
-                                imageMatrix = matrix
-                            }
-                            binding.ivTemp.isVisible = true
-                            binding.ivTemp.translationX = binding.container.translationX
-                            binding.ivTemp.translationY = binding.container.translationY
-                            zoomMode = true
-                        }
-
-                    }
-                    binding.ivTemp.dispatchTouchEvent(event)
-                }
-
-                MotionEvent.ACTION_MOVE -> {
-                    if (ignoreNextMove) {
-                        ignoreNextMove = false
-                        return@setOnTouchListener true
-                    }
-                    if (zoomMode && event.pointerCount >= 2) {
-                        // gửi cho ivTemp xử lý pinch zoom
-                        binding.ivTemp.dispatchTouchEvent(event)
-                    } else if (!zoomMode) {
-                        if (dragOffset != null && activePointerType != null) {
-
-                            val newX = event.x - dragOffset!!.x
-                            val newY = event.y - dragOffset!!.y
-                            when (activePointerType) {
-                                "start" -> {
-                                    binding.highlightPointerView.setStartPointerPosition(
-                                        PointF(
-                                            newX,
-                                            newY
-                                        )
-                                    )
-                                    marksInItemOverlay(true, newX, newY)
-
-                                }
-
-                                "end" -> {
-                                    binding.highlightPointerView.setEndPointerPosition(
-                                        PointF(
-                                            newX,
-                                            newY
-                                        )
-                                    )
-                                    marksInItemOverlay(false, newX, newY)
-                                }
-                            }
-                        } else {
-                            val dx = event.rawX - lastX
-                            val dy = event.rawY - lastY
-
-                            val containerW = binding.container.width
-                            val containerH = binding.container.height
-
-                            val scaledW = containerW * currentScale
-                            val scaledH = containerH * currentScale
-
-                            val minX = if (scaledW > containerW) -(scaledW - containerW) / 2 else 0f
-                            val maxX = if (scaledW > containerW) (scaledW - containerW) / 2 else 0f
-
-                            val minY = if (scaledH > containerH) -(scaledH - containerH) / 2 else 0f
-                            val maxY = if (scaledH > containerH) (scaledH - containerH) / 2 else 0f
-
-                            // cộng dồn vào pos
-                            posX += dx
-                            posY += dy
-
-                            // clamp trong giới hạn
-                            posX = posX.coerceIn(minX, maxX)
-
-                            // apply translation
-                            binding.container.translationX = posX
-                            if (posY in minY..maxY) {
-                                binding.container.translationY = posY
-                            } else {
-                                binding.pdfRecyclerView.scrollBy(0, -dy.toInt())
-                            }
 
 
-                            // lưu lại vị trí để tính velocity sau này (nếu fling)
-                            prevX = lastX
-                            prevY = lastY
-                            prevTime = lastTime
+        pdfTouchHandler = PdfTouchHandler(
+            this,
+            binding.container,
+            binding.ivTemp,
+            binding.gestureOverlay,
+            binding.highlightPointerView,
+            recyclerView,
+            layoutManager
 
-                            lastX = event.rawX
-                            lastY = event.rawY
-                            lastTime = event.eventTime
-                        }
-
-                    }
-                }
-
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    if (zoomMode) {
-                        binding.ivTemp.dispatchTouchEvent(event)
-                        if (event.pointerCount <= 1) {
-                            zoomMode = false
-                            binding.ivTemp.isVisible = false
-                        }
-                        if (startPointer != null && endPointer != null) {
-                            adapter.visibleEndPointer()
-                            adapter.visibleStartPointer()
-                        }
-                    } else {
-                        val dt = (lastTime - prevTime).coerceAtLeast(1)
-                        var vx = ((lastX - prevX) / dt) * 800
-                        var vy = ((lastY - prevY) / dt) * 800
-
-                        val boost = 2f
-                        vx *= boost
-                        vy *= boost
-
-                        fling(vx.toInt(), vy.toInt())
-                    }
-                    if (dragOffset != null) {
-                        activePointerType = null
-                        dragOffset = null
-
-                        adapter.updatePointer(startPointer!!, endPointer!!)
-
-                        binding.highlightPointerView.removeStartPointer()
-                        binding.highlightPointerView.removeEndPointer()
-                    }
-
-
-                    // đánh dấu để bỏ qua MOVE kế tiếp
-                    ignoreNextMove = true
-                }
-            }
-            true
-        }
-
-        binding.ivTemp.setOnTouchListener { _, event ->
-            scaleDetector.onTouchEvent(event)
-            true
-        }
-    }
-
-    private var lastScrollerY = 0f
-    private fun fling(vx: Int, vy: Int) {
-        val containerW = binding.container.width
-        val scaledW = containerW * currentScale
-
-        val minX = if (scaledW > containerW) -(scaledW - containerW) / 2 else 0f
-        val maxX = if (scaledW > containerW) (scaledW - containerW) / 2 else 0f
-
-        scroller.fling(
-            posX.toInt(),
-            posY.toInt(),
-            vx, vy,
-            minX.toInt(), maxX.toInt(),
-            Int.MIN_VALUE, Int.MAX_VALUE
         )
+        pdfTouchHandler.setOnPdfTouchListener(this)
+        pdfTouchHandler.attach()
 
-        lastScrollerY = scroller.startY.toFloat()
-        binding.container.postOnAnimation(flingRunnable)
+        //pop text a action
+        popupTextAction = PopupTextAction(this, binding.root)
+        popupTextAction.setOnTextActionListener(this)
     }
 
-    private fun marksInItemOverlay(isStartPointer: Boolean, x: Float, y: Float) {
+    override fun marksInItemOverlay(
+        isStartPointer: Boolean,
+        x: Float,
+        y: Float,
+        startPointerIndex: PointF,
+        endPointerIndex: PointF
+    ) {
         val child = binding.pdfRecyclerView.findChildViewUnder(x, y)
         if (child != null) {
             val pageIndex = binding.pdfRecyclerView.getChildAdapterPosition(child)
+            var startPointer: PointerIndex? =
+                pointerInPage(startPointerIndex.x, startPointerIndex.y)
+            if (startPointer == null) startPointer = startPointerInPage
+
+            var endPointer: PointerIndex? = pointerInPage(endPointerIndex.x, endPointerIndex.y)
+            if (endPointer == null) endPointer = endPointerInPage
+
             //fix
             val wordsInPointer = if (isStartPointer) {
                 startPointer = PointerIndex(pageIndex, PointF(x, y - child.y))
-                val endViewHolder =
-                    binding.pdfRecyclerView.findViewHolderForAdapterPosition(endPointer!!.pageIndex)
-                val endView = endViewHolder?.itemView
+                val endView = binding.pdfRecyclerView.measureItemAt(endPointer!!.pageIndex)
                 viewModel.textParserPointer(
-                    startPointer!!,
-                    endPointer!!,
+                    startPointer,
+                    endPointer,
                     child.width,
                     child.height,
-                    endView!!.width,
-                    endView.height
+                    endView.width.toInt(),
+                    endView.height.toInt()
                 )
             } else {
                 endPointer = PointerIndex(pageIndex, PointF(x, y - child.y))
-                val startViewHolder =
-                    binding.pdfRecyclerView.findViewHolderForAdapterPosition(startPointer!!.pageIndex)
-                val startView = startViewHolder?.itemView
+                val startView = binding.pdfRecyclerView.measureItemAt(startPointer!!.pageIndex)
                 viewModel.textParserPointer(
-                    startPointer!!,
-                    endPointer!!,
-                    startView!!.width,
-                    startView.height,
+                    startPointer,
+                    endPointer,
+                    startView.width.toInt(),
+                    startView.height.toInt(),
                     child.width,
                     child.height,
                 )
@@ -421,23 +181,16 @@ class PdfReadActivity : BaseActivity<ActivityPdfReadBinding>() {
             if (wordsInPointer.isNotEmpty()) {
 
                 val wordsByPage: Map<Int, List<WordInfo>> = wordsInPointer.groupBy { it.pageIndex }
-                val wordInAdapter = adapter.pageMarks
-
-                wordInAdapter.keys.filterNot { wordsByPage.containsKey(it) }.forEach {
-                    adapter.updateMarks(it, emptyList())
-                }
-
                 var firstRect: RectF? = null
                 var lastRect: RectF? = null
 
                 for ((page, words) in wordsByPage) {
-                    val viewHolder = binding.pdfRecyclerView.findViewHolderForAdapterPosition(page)
-                    val itemView = viewHolder?.itemView
+                    val itemView = binding.pdfRecyclerView.measureItemAt(page)
                     val wordsInPage =
                         viewModel.pdfToItemRect(
                             words.map { it.rect },
-                            itemView!!.width,
-                            itemView.height,
+                            itemView.width.toInt(),
+                            itemView.height.toInt(),
                             page
                         )
 
@@ -449,11 +202,11 @@ class PdfReadActivity : BaseActivity<ActivityPdfReadBinding>() {
                         lastRect = wordsInPage.last()
                     }
 
-                    adapter.updateMarks(page, wordsInPage)
+                    updateSelectedHighlights(page, wordsInPage, words.map { it.word })
                 }
 
                 if (isStartPointer) {
-                    if (startPointer!!.pageIndex > wordsInPointer.last().pageIndex) {
+                    if (startPointer.pageIndex > wordsInPointer.last().pageIndex) {
                         startPointer = PointerIndex(
                             wordsInPointer.last().pageIndex,
                             PointF(
@@ -461,7 +214,7 @@ class PdfReadActivity : BaseActivity<ActivityPdfReadBinding>() {
                                 lastRect.bottom
                             )
                         )
-                    } else if (startPointer!!.pageIndex < wordsInPointer.first().pageIndex) {
+                    } else if (startPointer.pageIndex < wordsInPointer.first().pageIndex) {
                         startPointer = PointerIndex(
                             wordsInPointer.first().pageIndex,
                             PointF(
@@ -469,37 +222,37 @@ class PdfReadActivity : BaseActivity<ActivityPdfReadBinding>() {
                                 firstRect.bottom
                             )
                         )
-                    } else if (startPointer!!.pageIndex > endPointer!!.pageIndex) {
+                    } else if (startPointer.pageIndex > endPointer.pageIndex) {
                         startPointer = PointerIndex(
-                            startPointer!!.pageIndex,
+                            startPointer.pageIndex,
                             PointF(
                                 lastRect!!.right,
                                 lastRect.bottom
                             )
                         )
-                    } else if (startPointer!!.pageIndex == endPointer!!.pageIndex) {
+                    } else if (startPointer.pageIndex == endPointer.pageIndex) {
                         if (wordsInPointer.map { it.lineYKey }
-                                .distinct().size == 1 && startPointer!!.pointF.x > endPointer!!.pointF.x) {
+                                .distinct().size == 1 && startPointer.pointF.x > endPointer.pointF.x) {
                             startPointer = PointerIndex(
-                                startPointer!!.pageIndex,
+                                startPointer.pageIndex,
                                 PointF(
                                     lastRect!!.right,
                                     lastRect.bottom
                                 )
                             )
                         } else if (wordsInPointer.first().columnGroupId != null && wordsInPointer.first().columnGroupId == wordsInPointer.last().columnGroupId
-                            && startPointer!!.pointF.x > endPointer!!.pointF.x
+                            && startPointer.pointF.x > endPointer.pointF.x
                         ) {
                             startPointer = PointerIndex(
-                                startPointer!!.pageIndex,
+                                startPointer.pageIndex,
                                 PointF(
                                     lastRect!!.right,
                                     lastRect.bottom
                                 )
                             )
-                        } else if (startPointer!!.pointF.y > endPointer!!.pointF.y) {
+                        } else if (startPointer.pointF.y > endPointer.pointF.y) {
                             startPointer = PointerIndex(
-                                startPointer!!.pageIndex,
+                                startPointer.pageIndex,
                                 PointF(
                                     lastRect!!.right,
                                     lastRect.bottom
@@ -507,7 +260,7 @@ class PdfReadActivity : BaseActivity<ActivityPdfReadBinding>() {
                             )
                         } else {
                             startPointer = PointerIndex(
-                                startPointer!!.pageIndex,
+                                startPointer.pageIndex,
                                 PointF(
                                     firstRect!!.left,
                                     firstRect.bottom
@@ -516,15 +269,17 @@ class PdfReadActivity : BaseActivity<ActivityPdfReadBinding>() {
                         }
                     } else {
                         startPointer = PointerIndex(
-                            startPointer!!.pageIndex,
+                            startPointer.pageIndex,
                             PointF(
                                 firstRect!!.left,
                                 firstRect.bottom
                             )
                         )
                     }
+                    val start = pointerInOverlay(startPointer)
+                    pdfTouchHandler.updatePointer(start, endPointerIndex)
                 } else {
-                    if (endPointer!!.pageIndex > wordsInPointer.last().pageIndex) {
+                    if (endPointer.pageIndex > wordsInPointer.last().pageIndex) {
                         endPointer = PointerIndex(
                             wordsInPointer.last().pageIndex,
                             PointF(
@@ -532,7 +287,7 @@ class PdfReadActivity : BaseActivity<ActivityPdfReadBinding>() {
                                 lastRect.bottom
                             )
                         )
-                    } else if (endPointer!!.pageIndex < wordsInPointer.first().pageIndex) {
+                    } else if (endPointer.pageIndex < wordsInPointer.first().pageIndex) {
                         endPointer = PointerIndex(
                             wordsInPointer.first().pageIndex,
                             PointF(
@@ -540,29 +295,29 @@ class PdfReadActivity : BaseActivity<ActivityPdfReadBinding>() {
                                 firstRect.bottom
                             )
                         )
-                    } else if (endPointer!!.pageIndex < startPointer!!.pageIndex) {
+                    } else if (endPointer.pageIndex < startPointer.pageIndex) {
                         endPointer = PointerIndex(
-                            endPointer!!.pageIndex,
+                            endPointer.pageIndex,
                             PointF(
                                 firstRect!!.left,
                                 firstRect.bottom
                             )
                         )
-                    } else if (endPointer!!.pageIndex == startPointer!!.pageIndex) {
+                    } else if (endPointer.pageIndex == startPointer.pageIndex) {
                         if (wordsInPointer.map { it.lineYKey }.distinct().size == 1
                             && wordsInPointer.first().columnIndex == wordsInPointer.last().columnIndex
                         ) {
-                            if (startPointer!!.pointF.x > endPointer!!.pointF.x) {
+                            if (startPointer.pointF.x > endPointer.pointF.x && endPointer.pointF.y <= firstRect!!.bottom + 2) {
                                 endPointer = PointerIndex(
-                                    endPointer!!.pageIndex,
+                                    endPointer.pageIndex,
                                     PointF(
-                                        firstRect!!.left,
+                                        firstRect.left,
                                         firstRect.bottom
                                     )
                                 )
                             } else {
                                 endPointer = PointerIndex(
-                                    endPointer!!.pageIndex,
+                                    endPointer.pageIndex,
                                     PointF(
                                         lastRect!!.right,
                                         lastRect.bottom
@@ -573,17 +328,17 @@ class PdfReadActivity : BaseActivity<ActivityPdfReadBinding>() {
                         } else if (wordsInPointer.first().columnGroupId != null
                             && wordsInPointer.first().columnGroupId == wordsInPointer.last().columnGroupId
                         ) {
-                            if (startPointer!!.pointF.x > endPointer!!.pointF.x){
+                            if (startPointer.pointF.x > endPointer.pointF.x) {
                                 endPointer = PointerIndex(
-                                    endPointer!!.pageIndex,
+                                    endPointer.pageIndex,
                                     PointF(
                                         firstRect!!.left,
                                         firstRect.bottom
                                     )
                                 )
-                            }else{
+                            } else {
                                 endPointer = PointerIndex(
-                                    endPointer!!.pageIndex,
+                                    endPointer.pageIndex,
                                     PointF(
                                         lastRect!!.right,
                                         lastRect.bottom
@@ -591,9 +346,9 @@ class PdfReadActivity : BaseActivity<ActivityPdfReadBinding>() {
                                 )
                             }
 
-                        } else if (startPointer!!.pointF.y > endPointer!!.pointF.y) {
+                        } else if (startPointer.pointF.y > endPointer.pointF.y) {
                             endPointer = PointerIndex(
-                                endPointer!!.pageIndex,
+                                endPointer.pageIndex,
                                 PointF(
                                     firstRect!!.left,
                                     firstRect.bottom
@@ -601,7 +356,7 @@ class PdfReadActivity : BaseActivity<ActivityPdfReadBinding>() {
                             )
                         } else {
                             endPointer = PointerIndex(
-                                endPointer!!.pageIndex,
+                                endPointer.pageIndex,
                                 PointF(
                                     lastRect!!.right,
                                     lastRect.bottom
@@ -610,163 +365,66 @@ class PdfReadActivity : BaseActivity<ActivityPdfReadBinding>() {
                         }
                     } else {
                         endPointer = PointerIndex(
-                            endPointer!!.pageIndex,
+                            endPointer.pageIndex,
                             PointF(
                                 lastRect!!.right,
                                 lastRect.bottom
                             )
                         )
                     }
+                    val end = pointerInOverlay(endPointer)
+                    pdfTouchHandler.updatePointer(startPointerIndex, end)
+
+                    startPointerInPage = startPointer
+                    endPointerInPage = endPointer
                 }
-                Log.v("endPointer", wordsInPointer.last().toString())
-                Log.v("startPointer", wordsInPointer.first().toString())
+                pointerShape(wordsInPointer, startPointer, endPointer)
             }
         }
     }
 
-    private val flingRunnable = object : Runnable {
-        override fun run() {
-            if (scroller.computeScrollOffset()) {
-                val newX = scroller.currX.toFloat()
-                val newY = scroller.currY.toFloat()
+    fun RecyclerView.measureItemAt(position: Int): SizeF {
+        val adapter = adapter ?: return SizeF(0f, 0f)
+        if (position !in 0 until adapter.itemCount) return SizeF(0f, 0f)
 
-                val containerW = binding.container.width
-                val containerH = binding.container.height
+        // Lấy viewType của item đó
+        val viewType = adapter.getItemViewType(position)
 
-                val scaledW = containerW * currentScale
-                val scaledH = containerH * currentScale
+        // Tạo ViewHolder "ảo" (chưa add vào RecyclerView thật)
+        val vh = adapter.createViewHolder(this, viewType)
 
-                val minX = if (scaledW > containerW) -(scaledW - containerW) / 2 else 0f
-                val maxX = if (scaledW > containerW) (scaledW - containerW) / 2 else 0f
+        // Bind dữ liệu tương ứng vào ViewHolder đó
+        adapter.onBindViewHolder(vh, position)
 
-                val minY = if (scaledH > containerH) -(scaledH - containerH) / 2 else 0f
-                val maxY = if (scaledH > containerH) (scaledH - containerH) / 2 else 0f
+        // Tạo spec để đo kích thước view
+        val widthSpec = View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY)
+        val heightSpec = View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
 
-                // clamp X
-                posX = newX.coerceIn(minX, maxX)
-                binding.container.translationX = posX
+        // Đo layout
+        vh.itemView.measure(widthSpec, heightSpec)
+        vh.itemView.layout(0, 0, vh.itemView.measuredWidth, vh.itemView.measuredHeight)
 
-                // clamp Y
-                val deltaY = newY - lastScrollerY
-                lastScrollerY = newY
+        // Trả về kích thước
+        return SizeF(
+            vh.itemView.measuredWidth.toFloat(),
+            vh.itemView.measuredHeight.toFloat()
+        )
+    }
 
-                if (deltaY != 0f) {
-                    if (newY in minY..maxY) {
-                        binding.container.translationY = newY
-                    } else {
-                        if (newY > maxY) {
-                            binding.container.translationY = maxY
-                        } else {
-                            binding.container.translationY = minY
-                        }
-                        binding.pdfRecyclerView.scrollBy(0, -deltaY.toInt())
-                    }
+    override fun showPopupAfterDrag() {
+        showPopup()
+    }
 
-                }
-                binding.container.postOnAnimation(this)
+    override fun setupObserver() {
+        lifecycleScope.launch {
+            viewModel.pageBitmaps.collect { (index, bmp) ->
+                adapter.updateBitmap(index, bmp)
             }
         }
     }
 
-
-    private lateinit var scroller: OverScroller
-
-    private var posX = 0f
-    private var posY = 0f
-    private var lastX = 0f
-    private var lastY = 0f
-    private var lastTime = 0L
-
-    private var prevX = 0f
-    private var prevY = 0f
-    private var prevTime = 0L
-
-    private val minScale = 1f
-    private val maxScale = 3f
-    private var currentScale = 1f
-
-    private var lastFocusX = 0f
-    private var lastFocusY = 0f
-
-
-    private val scaleDetector by lazy {
-        ScaleGestureDetector(
-            this,
-            object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
-
-                override fun onScaleBegin(detector: ScaleGestureDetector): Boolean {
-                    // Lưu lại vị trí focus ban đầu khi bắt đầu cử chỉ
-                    lastFocusX = detector.focusX
-                    lastFocusY = detector.focusY
-                    return true
-                }
-
-                override fun onScale(detector: ScaleGestureDetector): Boolean {
-                    val scaleFactor = detector.scaleFactor
-                    var newScale = currentScale * scaleFactor
-
-
-                    // Giữ scale trong khoảng cho phép
-                    newScale = newScale.coerceIn(minScale, maxScale)
-
-                    currentScale = newScale
-
-                    val deltaX = detector.focusX - lastFocusX
-                    val deltaY = detector.focusY - lastFocusY
-
-                    binding.ivTemp.scaleX = currentScale
-                    binding.ivTemp.scaleY = currentScale
-
-                    binding.ivTemp.translationX += deltaX
-                    binding.ivTemp.translationY += deltaY
-
-                    val imageWidth = binding.ivTemp.width * binding.ivTemp.scaleX
-                    val imageHeight = binding.ivTemp.height * binding.ivTemp.scaleY
-
-
-                    val viewWidth = binding.ivTemp.width.toFloat()
-                    val viewHeight = binding.ivTemp.height.toFloat()
-
-                    val maxTransX = maxOf(0f, (imageWidth - viewWidth) / 2)
-                    val maxTransY = maxOf(0f, (imageHeight - viewHeight) / 2)
-
-                    binding.ivTemp.translationX =
-                        binding.ivTemp.translationX.coerceIn(-maxTransX, maxTransX)
-                    binding.ivTemp.translationY =
-                        binding.ivTemp.translationY.coerceIn(-maxTransY, maxTransY)
-
-                    lastFocusX = detector.focusX
-                    lastFocusY = detector.focusY
-
-                    return true
-                }
-
-                override fun onScaleEnd(detector: ScaleGestureDetector) {
-                    layoutManager.scrollEnabled = false
-                    binding.container.scaleX = binding.ivTemp.scaleX
-                    binding.container.scaleY = binding.ivTemp.scaleY
-
-                    binding.container.translationX = binding.ivTemp.translationX
-                    binding.container.translationY = binding.ivTemp.translationY
-
-                    adapter.reSizePointer(
-                        startPointer!!.pageIndex,
-                        endPointer!!.pageIndex,
-                        (60 / (currentScale)).toInt()
-                    )
-                    
-                    binding.highlightPointerView.reSizePointer((60 / (currentScale)).toInt())
-
-                    binding.container.postDelayed({
-                        layoutManager.scrollEnabled = true
-                    }, 200)
-                }
-
-            })
-    }
-
-    fun captureItemsWithOffset(recyclerView: RecyclerView): Pair<Bitmap, Int> {
-        val layoutManager = recyclerView.layoutManager as LinearLayoutManager
+    override fun captureItemsWithOffset(): Pair<Bitmap, Int> {
+        val layoutManager = binding.pdfRecyclerView.layoutManager as LinearLayoutManager
 
         val firstVisible = layoutManager.findFirstVisibleItemPosition()
         val lastVisible = layoutManager.findLastVisibleItemPosition()
@@ -775,7 +433,7 @@ class PdfReadActivity : BaseActivity<ActivityPdfReadBinding>() {
             return Pair(createBitmap(1, 1), 0)
         }
 
-        // Tính tổng chiều cao các item
+        // Calculate the total height of the items
         var totalHeight = 0
         for (i in firstVisible..lastVisible) {
             layoutManager.findViewByPosition(i)?.let {
@@ -783,7 +441,7 @@ class PdfReadActivity : BaseActivity<ActivityPdfReadBinding>() {
             }
         }
 
-        val bitmap = createBitmap(recyclerView.width, totalHeight)
+        val bitmap = createBitmap(binding.pdfRecyclerView.width, totalHeight)
         val canvas = Canvas(bitmap)
 
         var offsetY = 0
@@ -793,7 +451,7 @@ class PdfReadActivity : BaseActivity<ActivityPdfReadBinding>() {
             val child = layoutManager.findViewByPosition(i) ?: continue
 
             if (i == firstVisible) {
-                // Lưu lại khoảng đã scroll trong item đầu tiên
+                // Save the scroll position in the first item
                 firstItemTopOffset = -child.top
             }
 
@@ -804,22 +462,543 @@ class PdfReadActivity : BaseActivity<ActivityPdfReadBinding>() {
             offsetY += child.height
         }
 
-        // Trả về bitmap + offset cần dịch chuyển để khớp màn hình hiện tại
+        // Return the bitmap + offset needed to align with the current screen
         return Pair(bitmap, firstItemTopOffset)
     }
-
-
-    override fun setupObserver() {
-        lifecycleScope.launch {
-            viewModel.pageBitmaps.collect { (index, bmp) ->
-                adapter.updateBitmap(index, bmp)
-            }
-        }
-    }
-
 
     private fun showError(message: String) {
         Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
         finish()
     }
+
+    override fun tapIsConfirmHighlight(x: Float, y: Float): Boolean {
+        val child = binding.pdfRecyclerView.findChildViewUnder(x, y)
+        if (child != null) {
+            val pageIndex = binding.pdfRecyclerView.getChildAdapterPosition(child)
+            val sortedHighlights = confirmedHighlight[pageIndex]
+                ?.sortedByDescending { it.confirmId }
+                ?.toMutableList()
+            if (sortedHighlights != null) {
+                val tappedHighlight = sortedHighlights.find { mark ->
+                    mark.marks.any { rect -> rect.contains(x, y - child.y) }
+                }
+                tappedHighlight?.confirmId?.let {
+                    findHighlightByConfirmId(it)
+                    return true
+                }
+            }
+        }
+        return true
+    }
+
+    private fun findHighlightByConfirmId(confirmId: Long) {
+        clearSelectedHighlights()
+        confirmedHighlight.forEach { (pageIndex, marksList) ->
+            val mark = marksList.find { it.confirmId == confirmId }
+            if (mark != null) {
+                selectedHighlights[pageIndex] = mark
+            }
+        }
+        selectedHighlights.forEach { (pageIndex, mark) ->
+            mark.text?.let {
+                updateSelectedHighlights(
+                    pageIndex,
+                    mark.marks,
+                    it,
+                    mark.confirmId,
+                    mark.contentNote,
+                )
+            }
+        }
+        showPopup()
+    }
+
+    override fun onLongPress(
+        x: Float,
+        y: Float,
+    ) {
+        val child = binding.pdfRecyclerView.findChildViewUnder(x, y)
+        if (child != null) {
+            val pageIndex = binding.pdfRecyclerView.getChildAdapterPosition(child)
+
+            val words = viewModel.coordinatesPdfTouch(
+                child.width,
+                child.height,
+                x,
+                y - child.y,
+                pageIndex,
+            )
+            val itemView = binding.pdfRecyclerView.measureItemAt(pageIndex)
+            val coordinatesPdfTouch = viewModel.pdfToItemRect(
+                words.map { it.rect },
+                itemView.width.toInt(),
+                itemView.height.toInt(),
+                pageIndex
+            )
+
+            if (coordinatesPdfTouch.isNotEmpty()) {
+                clearSelectedHighlights()
+
+                val sorted = coordinatesPdfTouch.sortedWith(
+                    compareBy<RectF> { it.top }
+                        .thenBy { it.left }
+                )
+
+                val startPointer = PointF(sorted.first().left, sorted.first().bottom + child.y)
+                val endPointer = PointF(sorted.last().right, sorted.last().bottom + child.y)
+
+                if (coordinatesPdfTouch.isNotEmpty()) {
+                    pdfTouchHandler.updatePointer(startPointer, endPointer)
+                    updateSelectedHighlights(pageIndex, coordinatesPdfTouch, words.map { it.word })
+                    showPopup()
+                }
+            }
+
+        }
+    }
+
+    fun updateSelectedHighlights(
+        pageIndex: Int,
+        marks: List<RectF>,
+        text: List<String>,
+        confirmId: Long? = -1,
+        contentNote: String? = null,
+    ) {
+        val newMark =
+            PageMark(
+                marksState = MarksState.LONG_PRESSED,
+                marks = marks,
+                confirmId = confirmId,
+                text = text,
+                contentNote = contentNote,
+                isFirstPageMark = selectedHighlights.keys.firstOrNull() == pageIndex
+            )
+        selectedHighlights[pageIndex] = newMark
+        adapter.updateSelectedMarks(pageIndex)
+    }
+
+    fun clearSelectedHighlights() {
+        val copyHighlights = selectedHighlights.toMap()
+        selectedHighlights.clear()
+
+        copyHighlights.keys.forEach { pageIndex ->
+            adapter.updateSelectedMarks(pageIndex)
+        }
+
+        pdfTouchHandler.updatePointer(null, null)
+    }
+
+
+    fun mergeSelectedAreas(selectedList: List<RectF>): RectF? {
+        if (selectedList.isEmpty()) return null
+
+        val result = RectF(selectedList[0])
+        for (i in 1 until selectedList.size) {
+            result.union(selectedList[i])
+        }
+        return result
+    }
+
+    fun showPopup() {
+        popupTextAction.updateSelectArea(null)
+
+        popupTextAction.setDictionary(false)
+        val textList = selectedHighlights.flatMap { (_, mark) -> mark.text ?: emptyList() }
+        if (textList.isNotEmpty()) {
+            val text = textList.joinToString("").replace(Regex("\\s+"), " ").trim()
+            if (text.matches(Regex("^[A-Za-zÀ-ỹ]+$"))) {
+                popupTextAction.setDictionary(true)
+            }
+        }
+
+        selectedHighlights.forEach { (pageIndex, mark) ->
+            if (mark.confirmId != -1L) popupTextAction.setEdit(true) else popupTextAction.setEdit(
+                false
+            )
+            val mergedRect = mergeSelectedAreas(mark.marks) ?: return@forEach
+            val selectArea =
+                mergedRect.toScreenRectForItem(binding.pdfRecyclerView, pageIndex) ?: return@forEach
+            if (selectArea.bottom > 0 && (selectArea.left > 0 || selectArea.right > 0)) {
+                popupTextAction.updateSelectArea(selectArea)
+                return@forEach
+            }
+        }
+        popupTextAction.show()
+    }
+
+    fun RectF.toScreenRectForItem(recyclerView: RecyclerView, position: Int): RectF? {
+        val viewHolder = recyclerView.findViewHolderForAdapterPosition(position) ?: return null
+        val itemView = viewHolder.itemView
+
+        val location = IntArray(2)
+        itemView.getLocationOnScreen(location)
+
+        val currentScale = pdfTouchHandler.currentScale
+
+        return RectF(
+            this.left * currentScale + location[0],
+            this.top * currentScale + location[1],
+            this.right * currentScale + location[0],
+            this.bottom * currentScale + location[1] + binding.highlightPointerView.getSizePointer()
+        )
+    }
+
+    fun pointerShape(
+        wordsInPointer: List<WordInfo>,
+        startPointerIndex: PointerIndex,
+        endPointerIndex: PointerIndex
+    ) {
+        if (wordsInPointer.isEmpty()) return
+
+        val firstWord = wordsInPointer.first()
+        val lastWord = wordsInPointer.last()
+
+        val screenWidth = Resources.getSystem().displayMetrics.widthPixels
+        val startAtBorder =
+            startPointerIndex.pointF.x < POINTER_BORDER_SPACING || startPointerIndex.pointF.x > (screenWidth - POINTER_BORDER_SPACING)
+        val endAtBorder =
+            endPointerIndex.pointF.x < POINTER_BORDER_SPACING || endPointerIndex.pointF.x > (screenWidth - POINTER_BORDER_SPACING)
+
+        if (startAtBorder) {
+            binding.highlightPointerView.setStartInverted(startPointerIndex.pointF.x < POINTER_BORDER_SPACING)
+        }
+        if (endAtBorder) {
+            binding.highlightPointerView.setEndInverted(endPointerIndex.pointF.x > (screenWidth - POINTER_BORDER_SPACING))
+        }
+
+        if (firstWord.pageIndex == lastWord.pageIndex) {
+            val startViewHolder =
+                binding.pdfRecyclerView.findViewHolderForAdapterPosition(startPointerIndex.pageIndex)
+            val startItemView = startViewHolder?.itemView
+
+            val startWidth = startItemView!!.width
+            val startHeight = startItemView.height
+
+            val endViewHolder =
+                binding.pdfRecyclerView.findViewHolderForAdapterPosition(endPointerIndex.pageIndex)
+            val endItemView = endViewHolder?.itemView
+
+            val endWidth = endItemView!!.width
+            val endHeight = endItemView.height
+
+
+            val startPointer = viewModel.itemToPdfPointerIndex(
+                startPointerIndex.pointF,
+                startWidth.toFloat(),
+                startHeight.toFloat(),
+                startPointerIndex.pageIndex
+            )
+
+            val endPointer = viewModel.itemToPdfPointerIndex(
+                endPointerIndex.pointF,
+                endWidth.toFloat(),
+                endHeight.toFloat(),
+                endPointerIndex.pageIndex
+            )
+
+            // Lấy tâm của từ
+            fun RectF.centerPoint(): PointF {
+                return PointF(centerX(), centerY())
+            }
+
+            // Hàm tính khoảng cách 2 điểm
+            fun distance(p1: PointF, p2: PointF): Float {
+                val dx = p1.x - p2.x
+                val dy = p1.y - p2.y
+                return sqrt(dx * dx + dy * dy)
+            }
+
+            val firstCenter = firstWord.rect.centerPoint()
+            val lastCenter = lastWord.rect.centerPoint()
+
+            val distFirstToStart = distance(firstCenter, startPointer)
+            val distLastToStart = distance(lastCenter, startPointer)
+
+            val distFirstToEnd = distance(firstCenter, endPointer)
+            val distLastToEnd = distance(lastCenter, endPointer)
+
+            val startIsFirst = distFirstToStart < distLastToStart
+            val endIsLast = distFirstToEnd > distLastToEnd
+
+            if (!startAtBorder) {
+                if (startIsFirst) {
+                    binding.highlightPointerView.setStartInverted(false)
+                } else {
+                    binding.highlightPointerView.setStartInverted(true)
+                }
+            }
+
+            if (!endAtBorder) {
+                if (endIsLast) {
+                    binding.highlightPointerView.setEndInverted(false)
+                } else {
+                    binding.highlightPointerView.setEndInverted(true)
+                }
+            }
+        } else {
+            if (!startAtBorder) {
+                if (startPointerIndex.pageIndex == firstWord.pageIndex) {
+                    binding.highlightPointerView.setStartInverted(false)
+                } else {
+                    binding.highlightPointerView.setStartInverted(true)
+                }
+            }
+
+            if (!endAtBorder) {
+                if (endPointerIndex.pageIndex == lastWord.pageIndex) {
+                    binding.highlightPointerView.setEndInverted(false)
+                } else {
+                    binding.highlightPointerView.setEndInverted(true)
+                }
+            }
+        }
+    }
+
+    fun pointerInOverlay(pointerIndex: PointerIndex): PointF? {
+        val viewHolder =
+            binding.pdfRecyclerView.findViewHolderForAdapterPosition(pointerIndex.pageIndex)
+        val child = viewHolder?.itemView ?: return null
+
+        return PointF(
+            pointerIndex.pointF.x,
+            pointerIndex.pointF.y + child.top
+        )
+    }
+
+    fun pointerInPage(
+        x: Float,
+        y: Float
+    ): PointerIndex? {
+        val child = binding.pdfRecyclerView.findChildViewUnder(x, y)
+        if (child != null) {
+            val pageIndex = binding.pdfRecyclerView.getChildAdapterPosition(child)
+
+            return PointerIndex(
+                pageIndex,
+                PointF(
+                    x,
+                    y - child.top
+                )
+            )
+        }
+        return null
+    }
+
+    override fun onClickColorHighlight(color: Int) {
+        val selectedHighlightsCopy = selectedHighlights.toMap()
+
+        selectedHighlights.forEach { (pageIndex, mark) ->
+            val confirmId: Long = System.currentTimeMillis()
+            val confirmMark = PageMark(
+                confirmId = mark.confirmId.takeIf { it != -1L } ?: confirmId,
+                marksState = MarksState.CONFIRM,
+                marks = mark.marks,
+                color = color,
+                text = mark.text,
+                contentNote = mark.contentNote,
+                isFirstPageMark = mark.isFirstPageMark
+            )
+            insertConfirmHighlight(pageIndex, confirmMark)
+        }
+
+        clearSelectedHighlights()
+
+        selectedHighlightsCopy.forEach { (pageIndex, _) ->
+            adapter.updateConfirmedMarks(pageIndex)
+        }
+    }
+
+    override fun onDeleteHighlight() {
+        val confirmId = selectedHighlights.values.first().confirmId
+
+        selectedHighlights.forEach { (pageIndex, _) ->
+            confirmedHighlight[pageIndex]?.removeIf { it.confirmId == confirmId }
+            confirmId?.let { adapter.removeConfirmedMarks(pageIndex, it) }
+            adapter.updateConfirmedMarks(pageIndex)
+
+        }
+
+        clearSelectedHighlights()
+    }
+
+    override fun onCopyText() {
+        val textList = selectedHighlights.flatMap { (_, mark) -> mark.text ?: emptyList() }
+        if (textList.isNotEmpty()) {
+            val text = textList.joinToString("").replace(Regex("\\s+"), " ").trim()
+            viewModel.copyTextToClipboard(this, text)
+            clearSelectedHighlights()
+        }
+    }
+
+    override fun onContentNote() {
+        showNoteDialog()
+    }
+
+    override fun onTranslate(isTranslate: Boolean) {
+        val textList = selectedHighlights.flatMap { (_, mark) -> mark.text ?: emptyList() }
+        val text = textList.joinToString("").replace(Regex("\\s+"), " ").trim()
+
+        if (text.isBlank()) {
+            Toast.makeText(this, "No text selected", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val translateIntent = Intent().apply {
+            action = Intent.ACTION_PROCESS_TEXT
+            type = "text/plain"
+            putExtra(Intent.EXTRA_PROCESS_TEXT, text)
+            putExtra(Intent.EXTRA_PROCESS_TEXT_READONLY, true)
+        }
+
+        val pm = packageManager
+        val resolveInfos = pm.queryIntentActivities(translateIntent, 0)
+
+        val translateApps = resolveInfos.filter {
+            val appName = it.loadLabel(pm).toString().lowercase()
+            val pkg = it.activityInfo.packageName.lowercase()
+            if (isTranslate) {
+                listOf("translate", "translator", "deepl")
+                    .any { keyword -> keyword in appName || keyword in pkg }
+            } else {
+                listOf("dict", "dictionary", "tflat", "laban", "oxford", "cambridge")
+                    .any { keyword -> keyword in appName || keyword in pkg }
+            }
+        }
+
+        val browserUrl = if (isTranslate)
+            "https://translate.google.com/?sl=auto&tl=vi&text=${Uri.encode(text)}"
+        else
+            "https://dictionary.cambridge.org/dictionary/english/${Uri.encode(text)}"
+
+        when {
+            translateApps.isNotEmpty() -> {
+                // App or browser
+                val appNames = translateApps.map { it.loadLabel(pm).toString() }.toMutableList()
+                appNames.add(if (isTranslate) "Open in browser (Google Translate)" else "Open in browser (Dictionary site)")
+
+                AlertDialog.Builder(this)
+                    .setTitle(if (isTranslate) "Select translation app" else "Select dictionary app")
+                    .setItems(appNames.toTypedArray()) { _, which ->
+                        if (which == translateApps.size) {
+                            val browserIntent = Intent.makeMainSelectorActivity(
+                                Intent.ACTION_MAIN, Intent.CATEGORY_APP_BROWSER
+                            ).apply {
+                                data = browserUrl.toUri()
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+
+                            try {
+                                startActivity(browserIntent)
+                            } catch (_: Exception) {
+                                Toast.makeText(this, "Browser not found", Toast.LENGTH_SHORT).show()
+                            }
+
+                        } else {
+                            val chosenApp = translateApps[which]
+                            val packageName = chosenApp.activityInfo.packageName
+                            val className = chosenApp.activityInfo.name
+
+                            val intent = Intent(translateIntent).apply {
+                                setClassName(packageName, className)
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+
+                            try {
+                                startActivity(intent)
+                            } catch (_: Exception) {
+                                Toast.makeText(this, "Cannot open app", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
+                    .setNegativeButton("Cancel", null)
+                    .show()
+            }
+
+            else -> {
+                // browser
+                val browserIntent = Intent.makeMainSelectorActivity(
+                    Intent.ACTION_MAIN, Intent.CATEGORY_APP_BROWSER
+                ).apply {
+                    data = browserUrl.toUri()
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+
+                try {
+                    startActivity(browserIntent)
+                } catch (_: Exception) {
+                    Toast.makeText(this, "Browser not found", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
+    override fun onMoreExtension(): String? {
+        val textList = selectedHighlights.flatMap { (_, mark) -> mark.text ?: emptyList() }
+        if (textList.isNotEmpty()) {
+            val text = textList.joinToString("").replace(Regex("\\s+"), " ").trim()
+            return text
+        }
+        return null
+    }
+
+    fun insertConfirmHighlight(pageIndex: Int, mark: PageMark) {
+        val confirmedList = confirmedHighlight.getOrPut(pageIndex) { mutableListOf() }
+        val existConfirmedMark = confirmedList.any { it.confirmId == mark.confirmId }
+        if (existConfirmedMark) {
+            val confirmedMark = confirmedList.find { it.confirmId == mark.confirmId }
+            confirmedMark?.color = mark.color
+            confirmedMark?.contentNote = mark.contentNote
+        } else {
+            confirmedList.add(mark)
+        }
+    }
+
+    private fun showNoteDialog() {
+        val binding = DialogAddNoteBinding.inflate(LayoutInflater.from(this))
+
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Note")
+            .setView(binding.root)
+            .setPositiveButton("Save") { _, _ ->
+                val noteContent = binding.editNote.text.toString()
+
+                selectedHighlights.values.forEach { mark ->
+                    mark.contentNote = noteContent
+                }
+
+                val selectedHighlightsCopy = selectedHighlights.toMap()
+
+                selectedHighlights.forEach { (pageIndex, mark) ->
+                    val confirmId: Long = System.currentTimeMillis()
+                    val confirmMark = PageMark(
+                        confirmId = mark.confirmId.takeIf { it != -1L } ?: confirmId,
+                        marksState = MarksState.CONFIRM,
+                        marks = mark.marks,
+                        color = mark.color ?: Color.parseColor("#4A90E2"),
+                        text = mark.text,
+                        contentNote = noteContent,
+                        isFirstPageMark = mark.isFirstPageMark
+                    )
+                    insertConfirmHighlight(pageIndex, confirmMark)
+                }
+                clearSelectedHighlights()
+
+                selectedHighlightsCopy.forEach { (pageIndex, _) ->
+                    adapter.updateConfirmedMarks(pageIndex)
+                }
+            }
+            .setNegativeButton("Cancel") { _, _ ->
+            }
+            .create()
+
+        dialog.setOnShowListener {
+            binding.editNote.requestFocus()
+            val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
+            imm.showSoftInput(binding.editNote, InputMethodManager.SHOW_IMPLICIT)
+        }
+
+        dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE)
+        dialog.show()
+    }
+
 }

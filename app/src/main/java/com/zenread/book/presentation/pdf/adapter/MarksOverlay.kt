@@ -2,12 +2,17 @@ package com.zenread.book.presentation.pdf.adapter
 
 import android.annotation.SuppressLint
 import android.content.Context
-import android.graphics.*
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.PointF
+import android.graphics.RectF
 import android.util.AttributeSet
 import android.view.View
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.createBitmap
 import com.zenread.book.R
+import com.zenread.book.presentation.pdf.MarksState
 
 class MarksOverlay @JvmOverloads constructor(
     context: Context, attrs: AttributeSet? = null
@@ -22,8 +27,11 @@ class MarksOverlay @JvmOverloads constructor(
 
     data class Highlight(
         val rectList: List<RectF>,
+        val marksState: MarksState,
         val id: Long? = null,
-        var color: Int? = null
+        var color: Int? = null,
+        var contentNote: Boolean = false,
+        var isFirstPageMark: Boolean = false
     )
 
     private var highlights = mutableListOf<Highlight>()
@@ -40,83 +48,94 @@ class MarksOverlay @JvmOverloads constructor(
     private var endPointerRect: RectF? = null
 
     // ===== MARKS =====
-    fun setMarks(marks: List<RectF>) {
-        highlights.clear()
-        if (marks.isNotEmpty()) highlights.add(Highlight(marks))
+    fun setSelectedMarks(marks: List<RectF>) {
+        clearSelectedMarks()
+        if (marks.isNotEmpty()) highlights.add(Highlight(marks, MarksState.LONG_PRESSED))
         invalidate()
     }
 
-    // ===== POINTERS =====
-    fun setStartPointerPosition(startPointer: PointF) {
-        this.startPointer = startPointer
+    fun setConfirmMarks(
+        confirmId: Long,
+        marks: List<RectF>,
+        color: Int?,
+        contentNote: String? = null,
+        isFirstPageMark: Boolean = false
+    ) {
+        if (marks.isNotEmpty()) {
+            if (!highlights.any { it.id == confirmId }) {
+                highlights.add(
+                    Highlight(
+                        marks,
+                        MarksState.CONFIRM,
+                        id = confirmId,
+                        color = color,
+                        isFirstPageMark = isFirstPageMark,
+                        contentNote = !contentNote.isNullOrBlank()
+                    )
+                )
+            } else {
+                val highlight = highlights.find { it.id == confirmId }
+                highlight?.color = color
+                highlight?.contentNote = !contentNote.isNullOrBlank()
+
+            }
+        }
         invalidate()
     }
 
-    fun setEndPointerPosition(endPointer: PointF) {
-        this.endPointer = endPointer
+    fun removeHighlight(id: Long) {
+        highlights.removeIf { id == it.id }
         invalidate()
     }
 
-    fun removeStartPointer() {
-        startPointer = null
-        startPointerRect = null
+    fun clearSelectedMarks() {
+        highlights.filter { it.marksState == MarksState.LONG_PRESSED }.forEach {
+            highlights.remove(it)
+        }
         invalidate()
     }
 
-    fun removeEndPointer() {
-        endPointer = null
-        endPointerRect = null
+    fun clearConfirmMarks() {
+        highlights.filter { it.marksState == MarksState.CONFIRM }.forEach {
+            highlights.remove(it)
+        }
         invalidate()
     }
 
-    /**
-     * Resize pointer icon theo pixel (ví dụ khi zoom)
-     */
-    fun reSizePointer(size: Int) {
-        if (sizePointer == size) return // tránh re-create không cần thiết
-        sizePointer = size
-
-        // Giải phóng bitmap cũ để tránh leak
-        startPointerBitmap?.recycle()
-        endPointerBitmap?.recycle()
-
-        // Reset bitmap để tạo lại ở lần vẽ tiếp theo
-        startPointerBitmap = null
-        endPointerBitmap = null
-
-        invalidate()
-    }
-
-    fun clearMarks() {
-        highlights.clear()
-        invalidate()
-    }
-
-    // ===== TOUCH DETECTION =====
-    fun isTouchOnStartPointer(x: Float, y: Float): PointF? {
-        return if (startPointerRect?.contains(x, y) == true) {
-            PointF(x - (startPointer?.x ?: 0f), y - (startPointer?.y ?: 0f))
-        } else null
-    }
-
-    fun isTouchOnEndPointer(x: Float, y: Float): PointF? {
-        return if (endPointerRect?.contains(x, y) == true) {
-            PointF(x - (endPointer?.x ?: 0f), y - (endPointer?.y ?: 0f))
-        } else null
-    }
-
-    // ===== DRAW =====
+    @SuppressLint("DrawAllocation")
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
 
-        // Vẽ vùng highlight
+        // highlight
         for (highlight in highlights) {
+            highlightPaint.apply {
+                color = highlight.color ?: ContextCompat.getColor(
+                    context,
+                    R.color.selected_color_default
+                )
+                alpha = if (highlight.marksState == MarksState.LONG_PRESSED) 60 else 80
+            }
+
             for (rect in highlight.rectList) {
                 canvas.drawRect(rect, highlightPaint)
             }
+
+            if (highlight.isFirstPageMark && highlight.contentNote) {
+                val firstRect = highlight.rectList.first()
+                val drawable = ContextCompat.getDrawable(context, R.drawable.ic_notes)
+                drawable?.let {
+                    val iconSize = sizePointer / 3
+                    val left = firstRect.left.toInt() - (iconSize / 2)
+                    val top = firstRect.top.toInt() - (iconSize / 2)
+                    val right = left + iconSize
+                    val bottom = top + iconSize
+
+                    it.setBounds(left, top, right, bottom)
+                    it.draw(canvas)
+                }
+            }
         }
 
-        // Vẽ start pointer
         startPointer?.let { sp ->
             val bmp = getStartPointerBitmap()
             val w = bmp.width
@@ -127,7 +146,6 @@ class MarksOverlay @JvmOverloads constructor(
             canvas.drawBitmap(bmp, left, top, null)
         }
 
-        // Vẽ end pointer
         endPointer?.let { ep ->
             val bmp = getEndPointerBitmap()
             val w = bmp.width
@@ -142,14 +160,16 @@ class MarksOverlay @JvmOverloads constructor(
     // ===== LAZY LOAD BITMAP =====
     private fun getStartPointerBitmap(): Bitmap {
         if (startPointerBitmap == null) {
-            startPointerBitmap = getBitmapFromDrawable(context, R.drawable.ic_start_pointer, sizePointer)
+            startPointerBitmap =
+                getBitmapFromDrawable(context, R.drawable.ic_start_pointer, sizePointer)
         }
         return startPointerBitmap!!
     }
 
     private fun getEndPointerBitmap(): Bitmap {
         if (endPointerBitmap == null) {
-            endPointerBitmap = getBitmapFromDrawable(context, R.drawable.ic_end_pointer, sizePointer)
+            endPointerBitmap =
+                getBitmapFromDrawable(context, R.drawable.ic_end_pointer, sizePointer)
         }
         return endPointerBitmap!!
     }
@@ -166,7 +186,6 @@ class MarksOverlay @JvmOverloads constructor(
 
     override fun onDetachedFromWindow() {
         super.onDetachedFromWindow()
-        // Giải phóng bitmap khi view bị destroy
         startPointerBitmap?.recycle()
         endPointerBitmap?.recycle()
         startPointerBitmap = null

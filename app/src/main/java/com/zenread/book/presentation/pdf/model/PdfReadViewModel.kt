@@ -1,6 +1,9 @@
 package com.zenread.book.presentation.pdf.model
 
 import android.app.Application
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.PointF
 import android.graphics.RectF
@@ -8,8 +11,10 @@ import android.net.Uri
 import android.util.Log
 import android.util.LruCache
 import android.util.Size
+import android.widget.Toast
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.recyclerview.widget.RecyclerView
 import com.zenread.book.core.system.DeviceProfileManager
 import com.zenread.book.data.parser.pdf.PdfTextParser
 import com.zenread.book.domain.model.WordInfo
@@ -87,7 +92,7 @@ class PdfReadViewModel @Inject constructor(
         pointX: Float,
         pointY: Float,
         index: Int
-    ): List<RectF> {
+    ): List<WordInfo> {
         val pdfSize = pdfRendererManager.getPdPageSize(index)
         val scaleX = pdfSize.first / itemWidth
         val scaleY = pdfSize.second / itemHeight
@@ -96,15 +101,7 @@ class PdfReadViewModel @Inject constructor(
 
         val words = pdfTextParser.getWordsInPage(pdfRendererManager.getPdDocument()!!, index)
             .sortedWith(compareBy<WordInfo> { it.rect.top }.thenBy { it.rect.left })
-        val result = pdfTextParser.getWordClusterTouch(words, touchPointExtract(PointF(pdfX, pdfY)))
-
-        return pdfToItemOverlayRect(
-            result.map { it.rect },
-            pdfSize.first,
-            pdfSize.second,
-            itemWidth,
-            itemHeight
-        )
+        return pdfTextParser.getWordClusterTouch(words, touchPointExtract(PointF(pdfX, pdfY)))
     }
 
     fun getWordInPage(index: Int): List<WordInfo> {
@@ -198,31 +195,10 @@ class PdfReadViewModel @Inject constructor(
             }
             val result =
                 pdfTextParser.textParserPointer(sortedWords, pdfStartPointer, pdfEndPointer)
+
             pageSelections.addAll(result)
         }
         return pageSelections
-    }
-
-
-    fun pdfToItemOverlayRect(
-        pdfRects: List<RectF>,
-        pdfPageWidth: Float,
-        pdfPageHeight: Float,
-        overlayWidth: Int,
-        overlayHeight: Int
-    ): List<RectF> {
-        val scaleX = overlayWidth / pdfPageWidth
-        val scaleY = overlayHeight / pdfPageHeight
-
-        return pdfRects.map { rect ->
-            val left = rect.left * scaleX
-            val right = rect.right * scaleX
-
-            val top = rect.top * scaleY
-            val bottom = rect.bottom * scaleY
-
-            RectF(left, top, right, bottom)
-        }
     }
 
     fun itemToPdfPointer(
@@ -237,8 +213,15 @@ class PdfReadViewModel @Inject constructor(
         return PointF(screenPointer.x * scaleX, screenPointer.y * scaleY)
     }
 
+    fun copyTextToClipboard(context: Context, text: String) {
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        val clip = ClipData.newPlainText("Copied Text", text)
+        clipboard.setPrimaryClip(clip)
+        Toast.makeText(context, "Copied Text", Toast.LENGTH_SHORT).show()
+    }
+
     fun pdfToItemRect(
-        pdfRects: List<RectF>,
+        pdfRect: List<RectF>,
         screenWidth: Int,
         screenHeight: Int,
         pageIndex: Int,
@@ -247,7 +230,7 @@ class PdfReadViewModel @Inject constructor(
         val scaleX = screenWidth / pdfSize.first
         val scaleY = screenHeight / pdfSize.second
 
-        return pdfRects.map { rect ->
+        return pdfRect.map { rect ->
             val left = rect.left * scaleX
             val right = rect.right * scaleX
 
@@ -258,17 +241,20 @@ class PdfReadViewModel @Inject constructor(
         }
     }
 
-    fun itemPointerToScreen(
+    fun itemToPdfPointerIndex(
         itemPointer: PointF,
         screenWidth: Float,
         screenHeight: Float,
-        itemWidth: Int,
-        itemHeight: Int,
+        pageIndex: Int,
     ): PointF {
-        val scaleX = screenWidth / itemWidth
-        val scaleY = screenHeight / itemHeight
+        val pdfSize = pdfRendererManager.getPdPageSize(pageIndex)
+        val itemWidth= pdfSize.first
+        val itemHeight= pdfSize.second
+        val scaleX =  itemWidth / screenWidth
+        val scaleY = itemHeight / screenHeight
         return PointF(itemPointer.x * scaleX, itemPointer.y * scaleY)
     }
+
 
     fun touchPointExtract(point: PointF, radius: Float = 10f): RectF {
         return RectF(

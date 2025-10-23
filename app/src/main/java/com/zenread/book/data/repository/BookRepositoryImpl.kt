@@ -7,11 +7,11 @@ import com.zenread.book.domain.model.Book
 import com.zenread.book.domain.repository.BookRepository
 import javax.inject.Inject
 
-class BookRepositoryImpl@Inject constructor(
+class BookRepositoryImpl @Inject constructor(
     private val bookDao: BookDao
-): BookRepository {
+) : BookRepository {
     override suspend fun getBookByTile(title: String): List<Book> {
-       val books =  bookDao.getBookByTile(title)
+        val books = bookDao.getBookByTile(title)
         return books.map { bookEntity ->
             BookMapper.toBook(bookEntity)
         }
@@ -28,7 +28,7 @@ class BookRepositoryImpl@Inject constructor(
     }
 
     override suspend fun getBooks(): List<Book> {
-        val books =  bookDao.getBooks()
+        val books = bookDao.getBooks()
         return books.map { bookEntity ->
             BookMapper.toBook(bookEntity)
         }

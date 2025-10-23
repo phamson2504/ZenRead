@@ -1,0 +1,16 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="960"
+    android:viewportHeight="960">
+
+    <!-- nền bo góc -->
+    <path
+        android:fillColor="#FF9800"
+        android:pathData="M80,0h800a80,80 0 0 1 80,80v800a80,80 0 0 1 -80,80h-800a80,80 0 0 1 -80,-80v-800a80,80 0 0 1 80,-80z" />
+
+    <!-- icon -->
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M120,720L120,640L600,640L600,720L120,720ZM120,520L120,440L840,440L840,520L120,520ZM120,320L120,240L840,240L840,320L120,320Z" />
+</vector>

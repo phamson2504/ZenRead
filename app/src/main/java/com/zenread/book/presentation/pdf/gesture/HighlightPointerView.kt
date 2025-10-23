@@ -17,10 +17,13 @@ class HighlightPointerView @JvmOverloads constructor(
     attrs: AttributeSet? = null
 ) : View(context, attrs) {
     private var startPointer: PointF? = null
-    private var endPointer: PointF? = null
+    var endPointer: PointF? = null
 
     private var startPointerBitmap: Bitmap? = null
     private var endPointerBitmap: Bitmap? = null
+
+    private var startPointerRect: RectF? = null
+    private var endPointerRect: RectF? = null
 
     private var sizePointer: Int = 60
 
@@ -32,6 +35,23 @@ class HighlightPointerView @JvmOverloads constructor(
     fun setEndPointerPosition(endPointer: PointF) {
         this.endPointer = endPointer
         invalidate()
+    }
+
+    fun getSizePointer(): Int{
+        return sizePointer
+    }
+
+    // ===== TOUCH DETECTION =====
+    fun isTouchOnStartPointer(x: Float, y: Float): PointF? {
+        return if (startPointerRect?.contains(x, y) == true) {
+            PointF(x - (startPointer?.x ?: 0f), y - (startPointer?.y ?: 0f))
+        } else null
+    }
+
+    fun isTouchOnEndPointer(x: Float, y: Float): PointF? {
+        return if (endPointerRect?.contains(x, y) == true) {
+            PointF(x - (endPointer?.x ?: 0f), y - (endPointer?.y ?: 0f))
+        } else null
     }
 
     fun removeStartPointer() {
@@ -58,26 +78,58 @@ class HighlightPointerView @JvmOverloads constructor(
 
         invalidate()
     }
+    private var startInverted = false
+    private var endInverted = false
+
+    fun setStartInverted(inverted: Boolean) {
+        if (startInverted != inverted) {
+            startInverted = inverted
+            invalidate()
+        }
+    }
+
+    fun setEndInverted(inverted: Boolean) {
+        if (endInverted != inverted) {
+            endInverted = inverted
+            invalidate()
+        }
+    }
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
 
-        // Vẽ start pointer
         startPointer?.let { sp ->
-            val bmp = getStartPointerBitmap()
+            val bmp = if (startInverted) getEndPointerBitmap() else getStartPointerBitmap()
             val w = bmp.width
-            val left = sp.x - w
-            val top = sp.y
+            val h = bmp.height
+
+            val (left, top) = if (startInverted) {
+                Pair(sp.x, sp.y)
+            } else {
+                // Bình thường
+                Pair(sp.x - w, sp.y)
+            }
+
+            startPointerRect = RectF(left, top, left + w, top + h)
             canvas.drawBitmap(bmp, left, top, null)
         }
 
-        // Vẽ end pointer
+        // --- Vẽ end pointer ---
         endPointer?.let { ep ->
-            val bmp = getEndPointerBitmap()
-            val left = ep.x
-            val top = ep.y
+            val bmp = if (endInverted) getStartPointerBitmap() else getEndPointerBitmap()
+            val w = bmp.width
+            val h = bmp.height
+
+            val (left, top) = if (endInverted) {
+                Pair(ep.x - w, ep.y)
+            } else {
+                Pair(ep.x, ep.y)
+            }
+
+            endPointerRect = RectF(left, top, left + w, top + h)
             canvas.drawBitmap(bmp, left, top, null)
         }
+
     }
 
     private fun getStartPointerBitmap(): Bitmap {
