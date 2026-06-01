@@ -14,12 +14,17 @@ import com.zenread.book.presentation.pdf.PageMark
 class PdfReadAdapter(
     private val confirmedHighlight: Map<Int, MutableList<PageMark>>,
     private val selectedMarksOfPage: Map<Int, PageMark>,
+    private val voicedHighlight: Map<Int, PageMark>,
+    private val searchHighlight: Map<Int, MutableList<PageMark>>,
     private var pageSizes: List<Size>
 ) : RecyclerView.Adapter<PdfReadAdapter.PageViewHolder>() {
 
     val idRemoveMap = mutableMapOf<Int, Long?>()
     val bitmaps = mutableMapOf<Int, Bitmap>()
 
+    fun updateVoiceHighlights(pageIndex: Int) {
+        notifyItemChanged(pageIndex, "voicedMarks")
+    }
 
     fun updateSelectedMarks(pageIndex: Int) {
         notifyItemChanged(pageIndex, "selectedMarks")
@@ -29,10 +34,13 @@ class PdfReadAdapter(
         notifyItemChanged(pageIndex, "confirmedMarks")
     }
 
+    fun updateSearchMarks(pageIndex: Int) {
+        notifyItemChanged(pageIndex, "searchMarks")
+    }
+
     fun removeConfirmedMarks(pageIndex: Int, confirmId: Long?) {
         idRemoveMap[pageIndex] = confirmId
     }
-
 
     inner class PageViewHolder(val binding: ItemPdfPageBinding) :
         RecyclerView.ViewHolder(binding.root)
@@ -50,7 +58,7 @@ class PdfReadAdapter(
         val imageView = holder.binding.pageImageView
         val overlay = holder.binding.marksOverlay
 
-        if (bitmap != null) {
+        if (bitmap != null && !bitmap.isRecycled) {
             // Có bitmap -> hiển thị trang PDF
             imageView.apply {
                 layoutParams.width = pageSizes[position].width
@@ -72,38 +80,45 @@ class PdfReadAdapter(
                 scaleType = ImageView.ScaleType.CENTER
                 setBackgroundColor(Color.WHITE) // nền trắng
             }
+            bitmaps.remove(position)
+            imageView.setImageDrawable(null)
         }
 
         overlay.layoutParams.width = pageSizes[position].width
         overlay.layoutParams.height = pageSizes[position].height
         overlay.requestLayout()
 
-        val marks = selectedMarksOfPage[position]?.marks
-        if (marks.isNullOrEmpty()) {
-            overlay.clearSelectedMarks()
-        } else {
-            overlay.setSelectedMarks(marks)
-        }
+        val marks = selectedMarksOfPage[position]?.screenMarks
+        overlay.clearSelectedMarks()
+        marks?.let { overlay.setSelectedMarks(it) }
+
 
         val confirmedHighlight = confirmedHighlight[position]
-        if (confirmedHighlight != null) {
-            confirmedHighlight.forEach { mark ->
-                {
-                    mark.confirmId?.let {
-                        overlay.setConfirmMarks(
-                            it,
-                            mark.marks,
-                            mark.color,
-                            mark.contentNote,
-                            mark.isFirstPageMark
-                        )
-                    }
-                }
+        overlay.clearConfirmMarks()
+        confirmedHighlight?.forEach { mark ->
+            mark.confirmId?.let {
+                overlay.setConfirmMarks(
+                    it,
+                    mark.screenMarks,
+                    mark.color,
+                    mark.contentNote,
+                    mark.isFirstPageMark
+                )
             }
-
-        } else {
-            overlay.clearConfirmMarks()
         }
+
+        val searchHighlight = searchHighlight[position]
+        overlay.clearSearchMarks()
+        searchHighlight?.forEach { mark ->
+            mark.color?.let { overlay.setSearchMarks(mark.screenMarks,  it ) }
+        }
+
+
+        val voicedMarks = voicedHighlight[position]?.screenMarks
+        overlay.clearVoicedMarks()
+        voicedMarks?.let { overlay.setVoicedMarks(it) }
+
+
     }
 
     override fun onBindViewHolder(
@@ -113,7 +128,6 @@ class PdfReadAdapter(
     ) {
         if (payloads.isNotEmpty()) {
             val overlay = holder.binding.marksOverlay
-
             for (payload in payloads) {
                 when (payload) {
                     "bitmap" -> {
@@ -124,11 +138,13 @@ class PdfReadAdapter(
                                 scaleType = ImageView.ScaleType.FIT_CENTER
                                 setBackgroundColor(Color.TRANSPARENT)
                             }
+                        }else {
+                            holder.binding.pageImageView.setImageDrawable(null)
                         }
                     }
 
                     "selectedMarks" -> {
-                        val marks = selectedMarksOfPage[position]?.marks ?: emptyList()
+                        val marks = selectedMarksOfPage[position]?.screenMarks ?: emptyList()
                         overlay.setSelectedMarks(marks)
                     }
 
@@ -143,7 +159,7 @@ class PdfReadAdapter(
                             mark.confirmId?.let {
                                 overlay.setConfirmMarks(
                                     it,
-                                    mark.marks,
+                                    mark.screenMarks,
                                     mark.color,
                                     mark.contentNote,
                                     mark.isFirstPageMark
@@ -151,12 +167,26 @@ class PdfReadAdapter(
                             }
                         }
                     }
+
+                    "searchMarks" -> {
+                        val searchHighlight = searchHighlight[position]
+                        overlay.clearSearchMarks()
+                        searchHighlight?.forEach { mark ->
+                            mark.color?.let { overlay.setSearchMarks(mark.screenMarks, it) }
+                        }
+                    }
+
+                    "voicedMarks" -> {
+                        val voicedMarks = voicedHighlight[position]?.screenMarks ?: emptyList()
+                        overlay.setVoicedMarks(voicedMarks)
+                    }
                 }
             }
         } else {
             super.onBindViewHolder(holder, position, payloads)
         }
     }
+
 
     override fun getItemCount(): Int = pageSizes.size
 
@@ -170,5 +200,16 @@ class PdfReadAdapter(
     fun updateBitmap(index: Int, bitmap: Bitmap) {
         bitmaps[index] = bitmap
         notifyItemChanged(index, "bitmap")
+    }
+
+    fun updateBitmapForMove(index: Int, bitmap: Bitmap){
+        bitmaps[index] = bitmap
+        notifyItemChanged(index)
+    }
+
+    override fun onViewRecycled(holder: PageViewHolder) {
+        super.onViewRecycled(holder)
+        val img = holder.binding.pageImageView
+        img.setImageDrawable(null)
     }
 }

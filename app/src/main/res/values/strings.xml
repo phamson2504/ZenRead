@@ -14,5 +14,4 @@
     <string name="no_data">No data</string>
     <string name="error_load_file">Can\'t Load File</string>
     <string name="num_fail_file">Load failed %d file</string>
-
 </resources>

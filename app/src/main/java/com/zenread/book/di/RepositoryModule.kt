@@ -5,13 +5,17 @@ import com.zenread.book.data.file.DiskCacheManagerImpl
 import com.zenread.book.data.parser.pdf.PdfTextParser
 import com.zenread.book.data.parser.pdf.PdfTextParserImpl
 import com.zenread.book.data.repository.BookRepositoryImpl
+import com.zenread.book.data.repository.BookmarkRepositoryImpl
 import com.zenread.book.data.repository.FileManagerRepositoryImpl
+import com.zenread.book.data.repository.HighlightRepositoryImpl
 import com.zenread.book.data.repository.PdfRendererManagerImpl
 import com.zenread.book.data.repository.PermissionRepositoryImpl
 import com.zenread.book.domain.repository.BookRepository
+import com.zenread.book.domain.repository.BookmarkRepository
 import com.zenread.book.domain.repository.DiskCacheManager
 import com.zenread.book.domain.repository.FileConvert
 import com.zenread.book.domain.repository.FileManagerRepository
+import com.zenread.book.domain.repository.HighlightRepository
 import com.zenread.book.domain.repository.PdfRendererManager
 import com.zenread.book.domain.repository.PermissionRepository
 import dagger.Binds
@@ -35,6 +39,19 @@ abstract class RepositoryModule {
     abstract fun bindBookRepository(
         bookRepositoryImpl: BookRepositoryImpl
     ): BookRepository
+
+
+    @Binds
+    @Singleton
+    abstract fun bindHighlightRepository(
+        highlightRepositoryImpl: HighlightRepositoryImpl
+    ): HighlightRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindBookmarkRepository(
+        bookmarkRepositoryImpl: BookmarkRepositoryImpl
+    ): BookmarkRepository
 
     @Binds
     @Singleton
@@ -65,4 +82,6 @@ abstract class RepositoryModule {
     abstract fun bindPdfTextParser(
         pdfTextParserImpl: PdfTextParserImpl
     ): PdfTextParser
+
+
 }

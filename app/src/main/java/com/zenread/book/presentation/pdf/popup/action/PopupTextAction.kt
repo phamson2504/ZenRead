@@ -1,4 +1,4 @@
-package com.zenread.book.presentation.pdf.popup
+package com.zenread.book.presentation.pdf.popup.action
 
 import android.content.Context
 import android.graphics.Color
@@ -12,8 +12,9 @@ import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.LinearLayout
 import android.widget.PopupWindow
-import com.zenread.book.R
 import androidx.core.graphics.drawable.toDrawable
+import com.zenread.book.R
+import com.zenread.book.presentation.pdf.popup.action.PopupTextActionExtension
 
 class PopupTextAction(
     private val context: Context,
@@ -143,7 +144,14 @@ class PopupTextAction(
             val actionWidth = popup!!.contentView.width
 
             val selectedText = listener?.onMoreExtension()
-            val extensionPopup = PopupTextActionExtension(context, selectedText, actionX, actionY, actionWidth, actionHeight)
+            val extensionPopup = PopupTextActionExtension(
+                context,
+                selectedText,
+                actionX,
+                actionY,
+                actionWidth,
+                actionHeight
+            )
             extensionPopup.show(parent)
         }
 

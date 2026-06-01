@@ -1,9 +1,8 @@
-package com.zenread.book.presentation.pdf.popup
+package com.zenread.book.presentation.pdf.popup.action
 
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
-import android.net.Uri
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
@@ -11,10 +10,10 @@ import android.widget.LinearLayout
 import android.widget.PopupWindow
 import android.widget.Toast
 import androidx.core.graphics.drawable.toDrawable
+import androidx.core.net.toUri
 import com.zenread.book.R
 import java.net.URLEncoder
 import kotlin.math.max
-import androidx.core.net.toUri
 
 class PopupTextActionExtension(
     private val context: Context,

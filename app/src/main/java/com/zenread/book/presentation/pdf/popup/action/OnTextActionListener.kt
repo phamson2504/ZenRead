@@ -1,4 +1,4 @@
-package com.zenread.book.presentation.pdf.popup
+package com.zenread.book.presentation.pdf.popup.action
 
 interface OnTextActionListener {
     fun onClickColorHighlight(color: Int)

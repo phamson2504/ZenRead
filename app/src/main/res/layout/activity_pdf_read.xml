@@ -5,7 +5,8 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/black"
-    tools:context=".presentation.pdf.ui.PdfReadActivity">
+    tools:context=".presentation.pdf.ui.PdfReadActivity"
+    android:fitsSystemWindows="true">
 
     <FrameLayout
         android:id="@+id/container"
@@ -18,14 +19,12 @@
             android:layout_height="match_parent"
             android:scaleType="fitCenter" />
 
-        <View
-            android:id="@+id/gestureOverlay"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:background="@android:color/transparent" />
-
         <com.zenread.book.presentation.pdf.gesture.HighlightPointerView
             android:id="@+id/highlightPointerView"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+        <View
+            android:id="@+id/gestureOverlay"
             android:layout_width="match_parent"
             android:layout_height="match_parent" />
     </FrameLayout>

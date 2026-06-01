@@ -3,6 +3,7 @@ package com.zenread.book.di
 import android.app.Application
 import androidx.room.Room
 import com.zenread.book.data.local.dao.BookDao
+import com.zenread.book.data.local.dao.BookmarkDao
 import com.zenread.book.data.local.dao.HighlightDao
 import com.zenread.book.data.local.db.BookDatabase
 import dagger.Module
@@ -38,4 +39,9 @@ object AppModule {
         return db.highlightDao
     }
 
+    @Provides
+    @Singleton
+    fun provideBookmarkDao(database: BookDatabase): BookmarkDao {
+        return database.bookmarkDao
+    }
 }

@@ -1,13 +1,12 @@
 package com.zenread.book.data.dot
 
-import android.graphics.RectF
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
 
 @Entity(
-    tableName = "highlight",
+    tableName = "bookmarks",
     foreignKeys = [ForeignKey(
         entity = BookEntity::class,
         parentColumns = ["id"],
@@ -16,15 +15,11 @@ import androidx.room.PrimaryKey
     )],
     indices = [Index("bookId")]
 )
-data class HighlightEntity(
+data class BookmarkEntity(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
     val bookId: Int,
-    val pageNumber: Int,
-    val rectList: List<RectF>,
-    val texts: List<String>,
-    val color: Int,
-    var confirmId: Long? = -1,
-    var isFirstPageMark: Boolean = false,
-    val contentNote: String? = null,
+    val pageNumber: Int?,
+    val note: String? = null,
+    val createdAt: Long = System.currentTimeMillis()
 )

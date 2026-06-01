@@ -5,16 +5,20 @@ import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 import com.zenread.book.data.convert.dot.Converters
 import com.zenread.book.data.dot.BookEntity
+import com.zenread.book.data.dot.BookmarkEntity
 import com.zenread.book.data.dot.HighlightEntity
 import com.zenread.book.data.local.dao.BookDao
+import com.zenread.book.data.local.dao.BookmarkDao
 import com.zenread.book.data.local.dao.HighlightDao
 
 @Database(
-    entities = [BookEntity::class, HighlightEntity::class],
+    entities = [BookEntity::class, HighlightEntity::class, BookmarkEntity::class],
     version = 1
 )
 @TypeConverters(Converters::class)
 abstract class BookDatabase : RoomDatabase() {
     abstract val bookDao: BookDao
     abstract val highlightDao: HighlightDao
+
+    abstract val bookmarkDao: BookmarkDao
 }

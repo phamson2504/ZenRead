@@ -54,6 +54,12 @@ class MarksOverlay @JvmOverloads constructor(
         invalidate()
     }
 
+    fun setVoicedMarks(marks: List<RectF>) {
+        clearVoicedMarks()
+        if (marks.isNotEmpty()) highlights.add(Highlight(marks, MarksState.VOICED))
+        invalidate()
+    }
+
     fun setConfirmMarks(
         confirmId: Long,
         marks: List<RectF>,
@@ -83,20 +89,43 @@ class MarksOverlay @JvmOverloads constructor(
         invalidate()
     }
 
+    fun setSearchMarks(marks: List<RectF>, color: Int){
+        highlights.add(
+            Highlight(
+                marks,
+                MarksState.SEARCH,
+                color = color
+            )
+        )
+        invalidate()
+    }
+
     fun removeHighlight(id: Long) {
         highlights.removeIf { id == it.id }
         invalidate()
     }
 
     fun clearSelectedMarks() {
-        highlights.filter { it.marksState == MarksState.LONG_PRESSED }.forEach {
-            highlights.remove(it)
-        }
+        highlights.filter { it.marksState == MarksState.LONG_PRESSED }
+            .forEach { highlights.remove(it) }
+        invalidate()
+    }
+
+    fun clearVoicedMarks() {
+        highlights.filter {it.marksState == MarksState.VOICED }
+            .forEach { highlights.remove(it) }
         invalidate()
     }
 
     fun clearConfirmMarks() {
         highlights.filter { it.marksState == MarksState.CONFIRM }.forEach {
+            highlights.remove(it)
+        }
+        invalidate()
+    }
+
+    fun clearSearchMarks() {
+        highlights.filter { it.marksState == MarksState.SEARCH }.forEach {
             highlights.remove(it)
         }
         invalidate()
@@ -111,7 +140,11 @@ class MarksOverlay @JvmOverloads constructor(
             highlightPaint.apply {
                 color = highlight.color ?: ContextCompat.getColor(
                     context,
-                    R.color.selected_color_default
+                    if (highlight.marksState == MarksState.VOICED){
+                        R.color.lavender
+                    }else{
+                        R.color.selected_color_default
+                    }
                 )
                 alpha = if (highlight.marksState == MarksState.LONG_PRESSED) 60 else 80
             }

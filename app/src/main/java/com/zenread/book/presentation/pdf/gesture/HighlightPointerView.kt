@@ -109,7 +109,6 @@ class HighlightPointerView @JvmOverloads constructor(
                 // Bình thường
                 Pair(sp.x - w, sp.y)
             }
-
             startPointerRect = RectF(left, top, left + w, top + h)
             canvas.drawBitmap(bmp, left, top, null)
         }

@@ -4,4 +4,7 @@
     <color name="white">#FFFFFFFF</color>
     <color name="lavender">#8692f7</color>
     <color name="selected_color_default">#3f96e8</color>
+    <color name="search_color">#E4C979</color>
+    <color name="moved_search_color">#3ABCB0</color>
+    <color name="search_color_hint" >#CCCEDB </color>
 </resources>

@@ -6,6 +6,7 @@ import android.content.res.Resources
 import android.graphics.Bitmap
 import android.graphics.Matrix
 import android.graphics.PointF
+import android.util.Log
 import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
@@ -13,9 +14,11 @@ import android.view.View
 import android.widget.ImageView
 import android.widget.OverScroller
 import androidx.core.view.isVisible
+import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.zenread.book.core.utils.Constants.POINTER_BORDER_SPACING
 import com.zenread.book.presentation.pdf.ScrollLinearLayoutManager
+import kotlin.math.abs
 
 class PdfTouchHandler(
     private val context: Context,
@@ -43,6 +46,10 @@ class PdfTouchHandler(
         fun showPopupAfterDrag()
 
         fun tapIsConfirmHighlight(x: Float, y: Float): Boolean
+
+        fun clearSelectedHighlight(isClear: Boolean, isInsideCenterSquare: Boolean = false)
+
+        fun onSmoothScrollFinished()
     }
 
 
@@ -52,8 +59,8 @@ class PdfTouchHandler(
 
     private var isTapConfirmHighlight: Boolean? = false
 
-    private var zoomMode = false
-    private val scroller = OverScroller(context)
+    private var isScaling = false
+    val scroller = OverScroller(context)
 
     var currentScale = 1f
     private val minScale = 1f
@@ -83,6 +90,10 @@ class PdfTouchHandler(
     var dragOffset: PointF? = null
     var activePointerType: String? = null
 
+    var isMove = false
+
+    var isAutoScrolling = false
+
     fun updatePointer(start: PointF?, end: PointF?) {
         startPointer = start
         endPointer = end
@@ -100,27 +111,26 @@ class PdfTouchHandler(
     private val gestureDetectorOverlay =
         GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
             override fun onLongPress(e: MotionEvent) {
-                if (startPointer != null && endPointer != null) {
+                if (startPointer != null && endPointer != null && !isMove) {
                     highlightPointerView.removeStartPointer()
                     highlightPointerView.removeEndPointer()
                     highlightPointerView.setStartInverted(false)
                     highlightPointerView.setEndInverted(false)
                 }
-                listener?.onLongPress(e.x, e.y)
+                if (!isMove) {
+                    listener?.onLongPress(e.x, e.y)
+                }
             }
         })
 
     @SuppressLint("ClickableViewAccessibility")
     fun attach() {
         overlay.setOnTouchListener { _, event ->
+            scaleDetectorItem.onTouchEvent(event)
             gestureDetectorOverlay.onTouchEvent(event)
             handleTouch(event)
         }
 
-        ivTemp.setOnTouchListener { _, event ->
-            scaleDetectorItem.onTouchEvent(event)
-            true
-        }
         pdfRecyclerView.addOnScrollListener(object : RecyclerView.OnScrollListener() {
             override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
                 if (endPointer != null && startPointer != null) {
@@ -129,15 +139,29 @@ class PdfTouchHandler(
                     updatePointer(start, end)
                 }
             }
+
+            override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
+                super.onScrollStateChanged(recyclerView, newState)
+                if (newState == RecyclerView.SCROLL_STATE_IDLE) {
+                    if (isAutoScrolling) {
+                        isAutoScrolling = false
+                        listener?.onSmoothScrollFinished()
+                    }
+                }
+            }
         })
     }
 
+    var pevIsMove = false
     fun handleTouch(event: MotionEvent): Boolean {
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
-                if (!zoomMode) {
-                    // Stop fling if it is running
-                    if (!scroller.isFinished) scroller.abortAnimation()
+                pevIsMove = false
+                if (!isScaling) {
+                    if (!scroller.isFinished) {
+                        scroller.abortAnimation()
+                        pevIsMove = true
+                    }
 
                     lastX = event.rawX
                     lastY = event.rawY
@@ -150,7 +174,7 @@ class PdfTouchHandler(
                     posX = container.translationX
                     posY = container.translationY
 
-                    isTapConfirmHighlight = listener?.tapIsConfirmHighlight(event.x, event.y)
+                    isMove = false
 
                     val result = isTouchOnPointerAt(event.x, event.y)
                     if (result != null) {
@@ -186,7 +210,7 @@ class PdfTouchHandler(
             }
 
             MotionEvent.ACTION_POINTER_DOWN -> {
-                if (!zoomMode && event.pointerCount >= 2) {
+                if (!isScaling && event.pointerCount >= 2) {
                     val (bmp, offset) = listener!!.captureItemsWithOffset()
                     ivTemp.apply {
                         scaleType = ImageView.ScaleType.MATRIX
@@ -198,24 +222,28 @@ class PdfTouchHandler(
                     ivTemp.isVisible = true
                     ivTemp.translationX = container.translationX
                     ivTemp.translationY = container.translationY
-                    zoomMode = true
+                    isScaling = true
+                    ivTemp.dispatchTouchEvent(event)
                 }
-                ivTemp.dispatchTouchEvent(event)
-                return true
+                return false
             }
 
             MotionEvent.ACTION_MOVE -> {
                 if (ignoreNextMove) {
                     ignoreNextMove = false
                     return true
-                } else if (zoomMode && event.pointerCount >= 2) {
-                    // send to ivTemp to handle pinch zoom
-                    ivTemp.dispatchTouchEvent(event)
-                } else if (!zoomMode) {
-                    if (dragOffset != null && activePointerType != null && startPointer!=null) {
-
+                } else if (!isScaling) {
+                    if (dragOffset != null && activePointerType != null && startPointer != null) {
                         val newX = event.x - dragOffset!!.x
                         val newY = event.y - dragOffset!!.y
+
+                        val dx = event.rawX - lastX
+                        val dy = event.rawY - lastY
+
+                        if (abs(dx) > 5 || abs(dy) > 5) {
+                            isMove = true
+                        }
+
                         when (activePointerType) {
                             "start" -> {
                                 highlightPointerView.setStartPointerPosition(
@@ -252,6 +280,10 @@ class PdfTouchHandler(
                     } else {
                         val dx = event.rawX - lastX
                         val dy = event.rawY - lastY
+
+                        if (abs(dx) > 5 || abs(dy) > 5) {
+                            isMove = true
+                        }
 
                         val containerW = container.width
                         val containerH = container.height
@@ -296,10 +328,27 @@ class PdfTouchHandler(
             }
 
             MotionEvent.ACTION_UP -> {
-                if (zoomMode) {
-                    ivTemp.dispatchTouchEvent(event)
+                if (!isMove && !isScaling && !pevIsMove) {
+                    isTapConfirmHighlight = listener?.tapIsConfirmHighlight(event.x, event.y)
+                    val displayMetrics = Resources.getSystem().displayMetrics
+                    val centerX = displayMetrics.widthPixels / 2
+                    val centerY = displayMetrics.heightPixels / 2
+                    val halfWidth = displayMetrics.widthPixels / 4
+                    val halfHeight = displayMetrics.heightPixels
+
+                    val isInsideCenterSquare =
+                        event.rawX.toInt() in (centerX - halfWidth)..(centerX + halfWidth) &&
+                                event.rawY.toInt() in (centerY - halfHeight)..(centerY + halfHeight)
+
+                    listener?.clearSelectedHighlight(true, isInsideCenterSquare)
+
+                } else {
+                    listener?.clearSelectedHighlight(false)
+                }
+
+                if (isScaling) {
                     if (event.pointerCount <= 1) {
-                        zoomMode = false
+                        isScaling = false
                         ivTemp.isVisible = false
                     }
                 } else {
@@ -316,17 +365,24 @@ class PdfTouchHandler(
                 if (dragOffset != null) {
                     activePointerType = null
                     dragOffset = null
-                    if (startPointer != null && endPointer != null) {
-                        val screenWidth = Resources.getSystem().displayMetrics.widthPixels
-                        if (startPointer!!.x < POINTER_BORDER_SPACING) {
-                            highlightPointerView.setStartInverted(true)
-                        } else if (startPointer!!.x > (screenWidth - POINTER_BORDER_SPACING)) {
-                            highlightPointerView.setStartInverted(false)
+                }
+
+                if (startPointer != null && endPointer != null) {
+                    val screenWidth = Resources.getSystem().displayMetrics.widthPixels
+                    val rightBound = screenWidth - POINTER_BORDER_SPACING
+                    startPointer?.x?.let { x ->
+                        when {
+                            x < POINTER_BORDER_SPACING -> highlightPointerView.setStartInverted(true)
+                            x > rightBound -> highlightPointerView.setStartInverted(false)
                         }
-                        if (endPointer!!.x < POINTER_BORDER_SPACING) {
-                            highlightPointerView.setEndInverted(false)
-                        } else if (endPointer!!.x > (screenWidth - POINTER_BORDER_SPACING)) {
-                            highlightPointerView.setEndInverted(true)
+                    }
+
+                    endPointer?.x?.let { x ->
+                        when {
+                            x < POINTER_BORDER_SPACING -> highlightPointerView.setEndInverted(false)
+                            x * currentScale > rightBound -> highlightPointerView.setEndInverted(
+                                true
+                            )
                         }
                     }
                 }
@@ -407,18 +463,19 @@ class PdfTouchHandler(
     }
 
     private val scaleDetectorItem by lazy {
-        ScaleGestureDetector(
-            context,
-            object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
-                override fun onScaleBegin(detector: ScaleGestureDetector): Boolean {
-                    // Lưu lại vị trí focus ban đầu khi bắt đầu cử chỉ
-                    lastFocusX = detector.focusX
-                    lastFocusY = detector.focusY
+        DynamicMinSpanScaleDetector(
+            object : DynamicMinSpanScaleDetector.OnScaleListener {
+                override fun onScaleBegin(focusX: Float, focusY: Float): Boolean {
+                    -
+                    Log.v("detector.scaleFactor", "begin")
+                    lastFocusX = focusX
+                    lastFocusY = focusY
                     return true
                 }
 
-                override fun onScale(detector: ScaleGestureDetector): Boolean {
-                    val scaleFactor = detector.scaleFactor
+                override fun onScale(scaleFactor: Float, focusX: Float, focusY: Float): Boolean {
+                    val scaleFactor = scaleFactor
+                    Log.v("detector.scaleFactor", scaleFactor.toString())
                     var newScale = currentScale * scaleFactor
 
 
@@ -427,8 +484,8 @@ class PdfTouchHandler(
 
                     currentScale = newScale
 
-                    val deltaX = detector.focusX - lastFocusX
-                    val deltaY = detector.focusY - lastFocusY
+                    val deltaX = focusX - lastFocusX
+                    val deltaY = focusY - lastFocusY
 
                     ivTemp.scaleX = currentScale
                     ivTemp.scaleY = currentScale
@@ -449,13 +506,13 @@ class PdfTouchHandler(
                     ivTemp.translationX = ivTemp.translationX.coerceIn(-maxTransX, maxTransX)
                     ivTemp.translationY = ivTemp.translationY.coerceIn(-maxTransY, maxTransY)
 
-                    lastFocusX = detector.focusX
-                    lastFocusY = detector.focusY
+                    lastFocusX = focusX
+                    lastFocusY = focusY
 
                     return true
                 }
 
-                override fun onScaleEnd(detector: ScaleGestureDetector) {
+                override fun onScaleEnd() {
                     layoutManager.scrollEnabled = false
                     container.scaleX = ivTemp.scaleX
                     container.scaleY = ivTemp.scaleY
@@ -491,47 +548,4 @@ class PdfTouchHandler(
             else -> null
         }
     }
-
-//    fun captureItemsWithOffset(recyclerView: RecyclerView): Pair<Bitmap, Int> {
-//        val layoutManager = recyclerView.layoutManager as LinearLayoutManager
-//
-//        val firstVisible = layoutManager.findFirstVisibleItemPosition()
-//        val lastVisible = layoutManager.findLastVisibleItemPosition()
-//
-//        if (firstVisible == RecyclerView.NO_POSITION || lastVisible == RecyclerView.NO_POSITION) {
-//            return Pair(createBitmap(1, 1), 0)
-//        }
-//
-//        // Calculate the total height of the items
-//        var totalHeight = 0
-//        for (i in firstVisible..lastVisible) {
-//            layoutManager.findViewByPosition(i)?.let {
-//                totalHeight += it.height
-//            }
-//        }
-//
-//        val bitmap = createBitmap(recyclerView.width, totalHeight)
-//        val canvas = Canvas(bitmap)
-//
-//        var offsetY = 0
-//        var firstItemTopOffset = 0
-//
-//        for (i in firstVisible..lastVisible) {
-//            val child = layoutManager.findViewByPosition(i) ?: continue
-//
-//            if (i == firstVisible) {
-//                // Save the scroll position in the first item
-//                firstItemTopOffset = -child.top
-//            }
-//
-//            canvas.withTranslation(0f, offsetY.toFloat()) {
-//                child.draw(canvas)
-//            }
-//
-//            offsetY += child.height
-//        }
-//
-//        // Return the bitmap + offset needed to align with the current screen
-//        return Pair(bitmap, firstItemTopOffset)
-//    }
 }

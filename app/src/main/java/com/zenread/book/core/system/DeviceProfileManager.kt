@@ -31,9 +31,9 @@ class DeviceProfileManager(context: Context) {
     }
     private fun createRenderSemaphore(level: RamLevel): Int {
         return when (level) {
-            RamLevel.LOW -> 1
-            RamLevel.MEDIUM -> 3
-            RamLevel.HIGH -> 6
+            RamLevel.LOW -> 4
+            RamLevel.MEDIUM -> 6
+            RamLevel.HIGH -> 8
         }
     }
 
@@ -47,9 +47,9 @@ class DeviceProfileManager(context: Context) {
 
     private fun determinePreloadDistance(level: RamLevel): Int {
         return when (level) {
-            RamLevel.LOW -> 1
-            RamLevel.MEDIUM -> 3
-            RamLevel.HIGH -> 5
+            RamLevel.LOW -> 4
+            RamLevel.MEDIUM -> 6
+            RamLevel.HIGH -> 8
         }
     }
 }

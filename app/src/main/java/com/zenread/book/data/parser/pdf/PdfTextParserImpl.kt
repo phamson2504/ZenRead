@@ -19,14 +19,12 @@ class PdfTextParserImpl @Inject constructor() : PdfTextParser {
         pdfTouchRect: RectF
     ): List<WordInfo> {
 
-        val center = wordList.find {
+        val center = wordList.firstOrNull {
             RectF.intersects(it.rect, pdfTouchRect)
         } ?: return emptyList()
 
-        // Filter all words on the same line (based on Y) and non-blank
-        val wordsGroup = groupWordsByLine(wordList)
-        val sameLine = wordsGroup.values.first { line ->
-            line.contains(center)
+        val sameLine = wordList.filter { word ->
+            word.lineYKey == center.lineYKey && word.columnIndex == center.columnIndex && word.pageIndex == center.pageIndex
         }.sortedBy { it.rect.left }
 
         // Calculate the average distance between words in a line
@@ -47,7 +45,7 @@ class PdfTextParserImpl @Inject constructor() : PdfTextParser {
             val prev = sameLine[i - 1]
             val curr = sameLine[i]
             val gap = curr.rect.left - prev.rect.right
-            if (gap <= averageGap) {
+            if (gap <= averageGap  && !prev.word.all { it.isWhitespace() }) {
                 result.add(0, prev)
             } else break
         }
@@ -59,7 +57,7 @@ class PdfTextParserImpl @Inject constructor() : PdfTextParser {
             val curr = sameLine[i]
             val next = sameLine[i + 1]
             val gap = next.rect.left - curr.rect.right
-            if (gap <= averageGap) {
+            if (gap <= averageGap && !next.word.all { it.isWhitespace() }) {
                 result.add(next)
             } else break
         }
@@ -133,7 +131,7 @@ class PdfTextParserImpl @Inject constructor() : PdfTextParser {
                     val firstLineKey = wordOfGroup.first()
                     val lastLineKey = wordOfGroup.last()
 
-                    val lowestWords = wordOfGroup.maxOf { it.rect.bottom } +2
+                    val lowestWords = wordOfGroup.maxOf { it.rect.bottom } + 2
                     val highestWords = wordOfGroup.minOf { it.rect.top } - 2
 
                     if (endPointer.y > lowestWords) {

@@ -1,0 +1,191 @@
+<!-- res/layout/reader_menu.xml -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fitsSystemWindows="true">
+
+    <!-- Top Menu -->
+    <LinearLayout
+        android:id="@+id/topMenu"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:visibility="invisible">
+
+        <LinearLayout
+            android:id="@+id/search_view"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@color/lavender"
+                android:orientation="horizontal"
+                android:padding="8dp">
+
+                <ImageView
+                    android:id="@+id/ic_back_btn"
+                    android:layout_width="30dp"
+                    android:layout_height="40dp"
+                    android:src="@drawable/ic_back_arrow" />
+
+                <EditText
+                    android:id="@+id/search_input"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center"
+                    android:layout_marginStart="13dp"
+                    android:layout_marginEnd="13dp"
+                    android:layout_weight="1"
+                    android:background="@android:color/transparent"
+                    android:hint="Search here..."
+                    android:imeOptions="actionSearch"
+                    android:inputType="text"
+                    android:textColor="@color/white"
+                    android:textColorHint="@color/search_color_hint"
+                    android:textSize="18sp" />
+
+                <ImageView
+                    android:id="@+id/search_close_btn"
+                    android:layout_width="25dp"
+                    android:layout_height="25dp"
+                    android:layout_gravity="center"
+                    android:src="@drawable/ic_close"
+                    android:visibility="gone" />
+            </LinearLayout>
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/searchDropdownRecycler"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@color/cardview_light_background"
+                android:visibility="gone" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/layout_tool"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:layout_gravity="top"
+            android:background="@color/lavender"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:padding="8dp">
+            <!-- Nút trong top menu -->
+            <ImageButton
+                android:id="@+id/btnBack"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@drawable/ic_back_arrow" />
+
+            <View
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:layout_weight="1" />
+
+            <ImageButton
+                android:id="@+id/btnSearch"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@drawable/ic_search" />
+
+            <ImageButton
+                android:id="@+id/btn_volume"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_marginStart="10dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@drawable/ic_volume_up" />
+
+            <ImageButton
+                android:id="@+id/btn_list_bulleted"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_marginStart="10dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@drawable/ic_list" />
+        </LinearLayout>
+    </LinearLayout>
+
+
+    <!-- Bottom Menu -->
+    <LinearLayout
+        android:id="@+id/bottomMenu"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:background="@color/lavender"
+        android:orientation="vertical"
+        android:padding="8dp"
+        android:visibility="invisible">
+
+        <!-- SeekBar + page info -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <SeekBar
+                android:id="@+id/pageSeekBar"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1" />
+
+            <TextView
+                android:id="@+id/tvPageInfo"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_vertical"
+                android:textColor="@android:color/white"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <!-- Title + chapter + bookmark -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="8dp"
+            android:layout_marginTop="10dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <!-- Cột chứa title + chapter -->
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/title_mp"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="title book"
+                    android:textColor="@color/white"
+                    android:textSize="18sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/chapter"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:maxLines="1"
+                    android:text="chapter book"
+                    android:textColor="@color/white"
+                    android:textSize="14sp" />
+            </LinearLayout>
+        </LinearLayout>
+    </LinearLayout>
+
+
+</FrameLayout>
