@@ -104,6 +104,7 @@ class PdfReadActivity : BaseActivity<ActivityPdfReadBinding>(),
             viewModel.loadPdf(uri, screenWidth) {
                 adapter.updatePageSizes(viewModel.pageSizes)
             }
+            viewModel.loadConfirmedHighlight()
         }
 
 
@@ -160,7 +161,7 @@ class PdfReadActivity : BaseActivity<ActivityPdfReadBinding>(),
         popupTextAction = PopupTextAction(this, binding.root)
         popupTextAction.setOnTextActionListener(this)
 
-        viewModel.loadConfirmedHighlight()
+
 
         popupReaderMenu = PopupReaderMenu(this, binding.root as ViewGroup)
         binding.root.addView(popupReaderMenu.view)

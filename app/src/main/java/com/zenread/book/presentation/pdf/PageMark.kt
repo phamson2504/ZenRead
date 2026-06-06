@@ -5,7 +5,7 @@ import android.graphics.RectF
 data class PageMark(
     var confirmId: Long? = -1,
     val marksState: MarksState,
-    val screenMarks: List<RectF>,
+    var screenMarks: List<RectF>,
     val pdfMarks: List<RectF> ?= null,
     val text: List<String>? = null,
     var contentNote: String? = null,

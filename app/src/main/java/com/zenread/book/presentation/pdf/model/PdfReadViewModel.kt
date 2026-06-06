@@ -1,5 +1,6 @@
 package com.zenread.book.presentation.pdf.model
 
+import android.annotation.SuppressLint
 import android.app.Application
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -69,6 +70,8 @@ import kotlin.collections.toMutableList
 import kotlin.math.abs
 import kotlin.math.sqrt
 import android.content.res.Configuration
+import androidx.core.graphics.toColorInt
+
 @HiltViewModel
 class PdfReadViewModel @Inject constructor(
     application: Application,
@@ -159,6 +162,7 @@ class PdfReadViewModel @Inject constructor(
 
                     }
 
+                    @Deprecated("Deprecated in Java")
                     override fun onError(utteranceId: String?) {}
                 })
             }
@@ -462,46 +466,12 @@ class PdfReadViewModel @Inject constructor(
         return PointF(screenPointer.x * scaleX, screenPointer.y * scaleY)
     }
 
+    @SuppressLint("UseKtx")
     fun captureItems(recyclerView: RecyclerView): Pair<Bitmap, Int> {
-        val layoutManager = recyclerView.layoutManager as LinearLayoutManager
-
-        val firstVisible = layoutManager.findFirstVisibleItemPosition()
-        val lastVisible = layoutManager.findLastVisibleItemPosition()
-
-        if (firstVisible == RecyclerView.NO_POSITION || lastVisible == RecyclerView.NO_POSITION) {
-            return Pair(createBitmap(1, 1), 0)
-        }
-
-        // Calculate the total height of the items
-        var totalHeight = 0
-        for (i in firstVisible..lastVisible) {
-            layoutManager.findViewByPosition(i)?.let {
-                totalHeight += it.height
-            }
-        }
-
-        val bitmap = createBitmap(recyclerView.width, totalHeight)
+        val bitmap = createBitmap(recyclerView.width, recyclerView.height)
         val canvas = Canvas(bitmap)
-
-        var offsetY = 0
-        var firstItemTopOffset = 0
-
-        for (i in firstVisible..lastVisible) {
-            val child = layoutManager.findViewByPosition(i) ?: continue
-
-            if (i == firstVisible) {
-                // Save the scroll position in the first item
-                firstItemTopOffset = -child.top
-            }
-
-            canvas.withTranslation(0f, offsetY.toFloat()) {
-                child.draw(canvas)
-            }
-
-            offsetY += child.height
-        }
-        // Return the bitmap + offset needed to align with the current screen
-        return Pair(bitmap, firstItemTopOffset)
+        recyclerView.draw(canvas)
+        return Pair(bitmap, 0)
     }
 
     var rectFirst: RectF? = null
@@ -1125,7 +1095,7 @@ class PdfReadViewModel @Inject constructor(
                 confirmId = mark.confirmId.takeIf { it != -1L } ?: confirmId,
                 marksState = MarksState.CONFIRM,
                 screenMarks = mark.screenMarks,
-                color = mark.color ?: Color.parseColor("#4A90E2"),
+                color = mark.color ?: "#4A90E2".toColorInt(),
                 text = mark.text,
                 contentNote = noteContent,
                 isFirstPageMark = mark.isFirstPageMark
@@ -1362,7 +1332,20 @@ class PdfReadViewModel @Inject constructor(
 
     fun loadConfirmedHighlight() {
         viewModelScope.launch {
-            _confirmedHighlight.value = highlightService.getHighlightsByBookPageMap(bookId)
+            val highlights = highlightService.getHighlightsByBookPageMap(bookId)
+
+            highlights.forEach { (pageIndex, pageMarks) ->
+                pageMarks.forEach { pageMark ->
+                    pageMark.screenMarks = pdfToItemRect(
+                        pageMark.screenMarks,
+                        pageSizes[pageIndex].width,
+                        pageSizes[pageIndex].height,
+                        pageIndex
+                    )
+                }
+            }
+            pageSizes
+            _confirmedHighlight.value = highlights
         }
     }
 
