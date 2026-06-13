@@ -31,6 +31,7 @@ class DiskCacheManagerImpl @Inject constructor(
         }
     }
 
+
     override fun loadBitmap(pageIndex: Int): Bitmap? {
         val file = getCacheFile(pageIndex)
         return if (file.exists()) BitmapFactory.decodeFile(file.absolutePath) else null

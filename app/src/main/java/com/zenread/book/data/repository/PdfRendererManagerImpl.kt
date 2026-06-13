@@ -49,7 +49,7 @@ class PdfRendererManagerImpl @Inject constructor(
         return pdfDocument?.let { pdfiumCore.getPageCount(it) } ?: 0
     }
 
-    override fun getPageSize(pageIndex: Int): Size {
+    override fun  getPageSize(pageIndex: Int): Size {
         val doc = pdfDocument ?: throw IllegalStateException("PDF not opened")
         pdfiumCore.openPage(doc, pageIndex)
         val width = pdfiumCore.getPageWidth(pdfDocument, pageIndex)
@@ -84,9 +84,8 @@ class PdfRendererManagerImpl @Inject constructor(
     override fun getScaledPageSize(pageIndex: Int, targetWith: Int): Size {
         val originalSize = getPageSize(pageIndex)
         val scale = targetWith.toFloat() / originalSize.width
-        val scaledWidth = targetWith
         val scaledHeight = (originalSize.height * scale).toInt()
-        return Size(scaledWidth, scaledHeight)
+        return Size(targetWith, scaledHeight)
     }
 
     override fun close() {

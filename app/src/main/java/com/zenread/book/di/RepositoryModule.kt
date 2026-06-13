@@ -2,6 +2,7 @@ package com.zenread.book.di
 
 import com.zenread.book.data.convert.pdf.PdfFileConvert
 import com.zenread.book.data.file.DiskCacheManagerImpl
+import com.zenread.book.data.file.PageCountManagerImpl
 import com.zenread.book.data.parser.pdf.PdfTextParser
 import com.zenread.book.data.parser.pdf.PdfTextParserImpl
 import com.zenread.book.data.repository.BookRepositoryImpl
@@ -16,6 +17,7 @@ import com.zenread.book.domain.repository.DiskCacheManager
 import com.zenread.book.domain.repository.FileConvert
 import com.zenread.book.domain.repository.FileManagerRepository
 import com.zenread.book.domain.repository.HighlightRepository
+import com.zenread.book.domain.repository.PageCountManager
 import com.zenread.book.domain.repository.PdfRendererManager
 import com.zenread.book.domain.repository.PermissionRepository
 import dagger.Binds
@@ -76,6 +78,12 @@ abstract class RepositoryModule {
     abstract fun bindDiskCacheManager(
         diskCacheManagerImpl: DiskCacheManagerImpl
     ): DiskCacheManager
+
+    @Binds
+    @Singleton
+    abstract fun bindPageCountManager(
+        pageCountManagerImpl: PageCountManagerImpl
+    ): PageCountManager
 
     @Binds
     @Singleton

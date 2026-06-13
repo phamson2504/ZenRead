@@ -9,7 +9,6 @@ import android.content.Intent
 import android.content.res.Resources
 import android.graphics.Bitmap
 import android.graphics.Canvas
-import android.graphics.Color
 import android.graphics.PointF
 import android.graphics.RectF
 import android.net.Uri
@@ -21,7 +20,6 @@ import android.util.Size
 import android.view.View
 import android.widget.Toast
 import androidx.core.graphics.createBitmap
-import androidx.core.graphics.withTranslation
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
@@ -71,6 +69,12 @@ import kotlin.math.abs
 import kotlin.math.sqrt
 import android.content.res.Configuration
 import androidx.core.graphics.toColorInt
+import com.zenread.book.domain.repository.PageCountManager
+import com.zenread.book.presentation.pdf.ReadingPosition
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.delay
 
 @HiltViewModel
 class PdfReadViewModel @Inject constructor(
@@ -78,7 +82,8 @@ class PdfReadViewModel @Inject constructor(
     private val pdfRendererManager: PdfRendererManager,
     private val diskCacheManager: DiskCacheManager,
     private val pdfTextParser: PdfTextParser,
-    private val highlightService: HighlightService
+    private val highlightService: HighlightService,
+    private val pageCountManager: PageCountManager
 ) : ViewModel() {
 
     private val deviceProfile = DeviceProfileManager(application)
@@ -93,6 +98,8 @@ class PdfReadViewModel @Inject constructor(
     val preloadDistance = deviceProfile.preloadDistance
 
     private val pageSelect = mutableMapOf<Int, List<WordInfo>>()
+
+    val pageWords = mutableMapOf<Int, List<WordInfo>>()
 
     private val _selectedHighlight = MutableLiveData<MutableMap<Int, PageMark>>(mutableMapOf())
     val selectedHighlight: LiveData<MutableMap<Int, PageMark>> = _selectedHighlight
@@ -163,7 +170,8 @@ class PdfReadViewModel @Inject constructor(
                     }
 
                     @Deprecated("Deprecated in Java")
-                    override fun onError(utteranceId: String?) {}
+                    override fun onError(utteranceId: String?) {
+                    }
                 })
             }
         }
@@ -321,31 +329,70 @@ class PdfReadViewModel @Inject constructor(
         }
     }
 
+    fun updatePageSize(screenWidth: Int, onReady: () -> Unit) {
+        pageSizes = (0 until pageCount).map { index ->
+            pdfRendererManager.getScaledPageSize(index, screenWidth)
+        }
+        onReady()
+    }
+
 
     fun coordinatesPdfTouch(
         itemWidth: Int,
         itemHeight: Int,
+        wordInfo: List<WordInfo>,
         pointX: Float,
         pointY: Float,
         index: Int
     ): List<WordInfo> {
+        pageSelect.clear()
         val pdfSize = pdfRendererManager.getPdPageSize(index)
         val scaleX = pdfSize.first / itemWidth
         val scaleY = pdfSize.second / itemHeight
         val pdfX = pointX * scaleX
         val pdfY = pointY * scaleY
 
-        val wordsInPage = pdfTextParser.getWordsInPage(pdfRendererManager.getPdDocument()!!, index)
-        val avgWidth = wordsInPage.map { it.rect.width() }.average().toFloat()
-        val avgHeight = wordsInPage.map { it.rect.height() }.average().toFloat()
+        return pdfTextParser.getWordClusterTouch(wordInfo, touchPointExtract(PointF(pdfX, pdfY)))
+    }
 
-        val sortedWords = pdfTextParser.groupWords(
-            wordsInPage.map { it.copy() },
-            avgWidth * 3f,
-            avgHeight / 2
-        )
+    private var loadWordsJob: Job? = null
+    fun loadVisiblePagesWords(visiblePages: List<Int>) {
+        loadWordsJob?.cancel()
 
-        return pdfTextParser.getWordClusterTouch(sortedWords, touchPointExtract(PointF(pdfX, pdfY)))
+        loadWordsJob = viewModelScope.launch {
+            delay(300)
+            try {
+                coroutineScope {
+                    val deferred = visiblePages.map { pageIndex ->
+                        async(Dispatchers.IO) {
+                            pageWords.clear()
+                            pageWords[pageIndex]?.let {
+                                return@async pageIndex to it
+                            }
+                            val wordsInPage = pdfTextParser.getWordsInPage(
+                                pdfRendererManager.getPdDocument()!!,
+                                pageIndex
+                            )
+                            val avgWidth = wordsInPage.map { it.rect.width() }.average().toFloat()
+                            val avgHeight = wordsInPage.map { it.rect.height() }.average().toFloat()
+
+                            val sortedWords = pdfTextParser.groupWords(
+                                wordsInPage.map { it.copy() },
+                                avgWidth * 3f,
+                                avgHeight / 2
+                            )
+                            pageIndex to sortedWords
+                        }
+                    }
+                    val results = deferred.awaitAll()
+                    results.forEach { (pageIndex, words) ->
+                        pageWords[pageIndex] = words
+                    }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            }
+        }
     }
 
     fun getWordInPage(index: Int): List<WordInfo> {
@@ -372,7 +419,21 @@ class PdfReadViewModel @Inject constructor(
 
         for (pageIndex in pageRange) {
             if (!pageSelect.containsKey(pageIndex)) {
-                val wordInfo = getWordInPage(pageIndex)
+                val wordInfo = pageWords[pageIndex] ?: run {
+                    val wordsInPage = getWordInPage(pageIndex)
+
+                    val avgWidth = wordsInPage.map { it.rect.width() }.average().toFloat()
+                    val avgHeight = wordsInPage.map { it.rect.height() }.average().toFloat()
+
+                    pdfTextParser.groupWords(
+                        wordsInPage.map { it.copy() },
+                        avgWidth * 3f,
+                        avgHeight / 2
+                    ).also {
+                        pageWords[pageIndex] = it
+                    }
+                }
+
                 pageSelect[pageIndex] = wordInfo
             }
         }
@@ -384,14 +445,6 @@ class PdfReadViewModel @Inject constructor(
 
         for (pageIndex in pointerAtLowerPage.pageIndex..pointerAtHighPage.pageIndex) {
             val wordsInPage = pageSelect[pageIndex] ?: continue
-
-            val avgWidth = wordsInPage.map { it.rect.width() }.average().toFloat()
-            val avgHeight = wordsInPage.map { it.rect.height() }.average().toFloat()
-            val sortedWords = pdfTextParser.groupWords(
-                wordsInPage.map { it.copy() },
-                avgWidth * 3f,
-                avgHeight / 2
-            )
             val pdfSize = pdfRendererManager.getPdPageSize(pageIndex)
             val pdfStartPointer = if (pointerAtLowerPage.pageIndex == pageIndex) {
                 if (startPointer.pageIndex == pageIndex) {
@@ -438,7 +491,7 @@ class PdfReadViewModel @Inject constructor(
 
             }
             val result =
-                pdfTextParser.textParserPointer(sortedWords, pdfStartPointer, pdfEndPointer)
+                pdfTextParser.textParserPointer(wordsInPage, pdfStartPointer, pdfEndPointer)
 
             pageSelections.addAll(result)
         }
@@ -530,7 +583,7 @@ class PdfReadViewModel @Inject constructor(
                 lastVisiblePageReal = i
                 visibleBottomInPage = screenHeight - currentHeight
             } else {
-                currentHeight = currentHeight + (pageView.height - currentVisibleTopInPage)
+                currentHeight += (pageView.height - currentVisibleTopInPage)
             }
         }
         val sentenceFirst = rectHighlightOnScreen.values.firstOrNull() ?: return
@@ -590,52 +643,31 @@ class PdfReadViewModel @Inject constructor(
                 val containerH = containerView.height
                 val scaledH = containerH * containerView.scaleY
                 val maxY = if (scaledH > containerH) (scaledH - containerH) / 2 else 0f
-                var offsetY = rectFirst!!.top + (pageLoc[1]- statusBarHeight) / containerView.scaleY
+                var offsetY =
+                    rectFirst!!.top + (pageLoc[1] - statusBarHeight) / containerView.scaleY
 
-                if (offsetY < 0){
+                if (offsetY < 0) {
                     val remainUp = recyclerView.scrollUp(-offsetY.toInt())
                     if (remainUp > 0)
                         containerView.translationY += remainUp * containerView.scaleY
-                }else{
+                } else {
 
-                        val moveDownOffset =  -containerView.translationY + offsetY * containerView.scaleY
-                        if (moveDownOffset > maxY){
-                            
-                            if (maxY != 0f){
-                                containerView.translationY = -maxY
-                                offsetY = offsetY - maxY / containerView.scaleY
-                            }
-                        }else{
-                            containerView.translationY = -moveDownOffset
-                            offsetY = 0f
+                    val moveDownOffset =
+                        -containerView.translationY + offsetY * containerView.scaleY
+                    if (moveDownOffset > maxY) {
+
+                        if (maxY != 0f) {
+                            containerView.translationY = -maxY
+                            offsetY -= maxY / containerView.scaleY
                         }
-                        recyclerView.scrollDown(offsetY.toInt())
+                    } else {
+                        containerView.translationY = -moveDownOffset
+                        offsetY = 0f
+                    }
+                    recyclerView.scrollDown(offsetY.toInt())
 
 
                 }
-
-
-
-//                if (offsetY > maxY) {
-//                    containerView.translationY = -maxY
-//                    val pageLcs = IntArray(2)
-//                    pageView.getLocationOnScreen(pageLcs)
-//                    val offset = (pageLcs[1] - statusBarHeight) / containerView.scaleY
-//                    recyclerView.scrollBy(
-//                        0,
-//                        (offset + rectFirst!!.top).toInt()
-//                    )
-//
-//                } else {
-//                    containerView.translationY = maxY
-//                    val pageLcs = IntArray(2)
-//                    pageView.getLocationOnScreen(pageLcs)
-//                    val offset = (pageLcs[1] - statusBarHeight) / containerView.scaleY
-//                    recyclerView.scrollBy(
-//                        0,
-//                        (offset + rectFirst!!.top).toInt()
-//                    )
-//                }
 
                 val parentView = containerView.parent as View
                 val scaledWidth = containerView.width * containerView.scaleX
@@ -694,12 +726,11 @@ class PdfReadViewModel @Inject constructor(
 
         val totalScrollable = (range - extent)
         val remainingDown = (totalScrollable - offset)
-        val remainingUp = offset
 
         return ScrollResult(
             totalScrollable = totalScrollable,
             remainingDown = remainingDown,
-            remainingUp = remainingUp
+            remainingUp = offset
         )
     }
 
@@ -791,11 +822,6 @@ class PdfReadViewModel @Inject constructor(
                 pdfSize.second
             )
 
-            Log.d(
-                "ZoomDebug",
-                "child.x=${xScreen} child.y=${yScreen}"
-            )
-
             var firstWord =
                 sentences[currentVoicePage]?.map { it.words }?.flatten()
                     ?.firstOrNull { it.rect.top > pointInPdf.y }
@@ -884,7 +910,7 @@ class PdfReadViewModel @Inject constructor(
 
         for (word in words) {
             currentSentence.add(word)
-            // nếu word.text là dấu kết câu hoặc kết thúc bằng dấu câu
+
             if (word.word in endMarks || endMarks.any { word.word.endsWith(it) }) {
                 sentences.add(SentenceInfo(sentenceIndex, currentSentence.toList()))
                 currentSentence.clear()
@@ -892,7 +918,6 @@ class PdfReadViewModel @Inject constructor(
             }
         }
 
-        // nếu còn sót từ chưa đóng câu
         if (currentSentence.isNotEmpty()) {
             sentences.add(SentenceInfo(sentenceIndex, currentSentence.toList()))
         }
@@ -1153,6 +1178,7 @@ class PdfReadViewModel @Inject constructor(
         return TranslationResult(translateApps, browserUrl, text)
     }
 
+
     fun mergeSelectedAreas(selectedList: List<RectF>): RectF? {
         if (selectedList.isEmpty()) return null
 
@@ -1218,12 +1244,10 @@ class PdfReadViewModel @Inject constructor(
                 endPointerIndex.pageIndex
             )
 
-            // Lấy tâm của từ
             fun RectF.centerPoint(): PointF {
                 return PointF(centerX(), centerY())
             }
 
-            // Hàm tính khoảng cách 2 điểm
             fun distance(p1: PointF, p2: PointF): Float {
                 val dx = p1.x - p2.x
                 val dy = p1.y - p2.y
@@ -1486,7 +1510,6 @@ class PdfReadViewModel @Inject constructor(
             val title = current.title
             var pageNumber = -1
 
-            // Gộp xử lý destination
             val destination = current.destination
                 ?: (current.action as? PDActionGoTo)?.destination
 
@@ -1500,7 +1523,6 @@ class PdfReadViewModel @Inject constructor(
                 }
             }
 
-            // Đệ quy vào con
             val children = if (current.hasChildren()) {
                 getCatalogueFrom(current.firstChild, level + 1)
             } else emptyList()
@@ -1519,6 +1541,26 @@ class PdfReadViewModel @Inject constructor(
         }
 
         return tocList
+    }
+
+    fun getCurrentPosition(recyclerView: RecyclerView): ReadingPosition {
+        val layoutManager = recyclerView.layoutManager as LinearLayoutManager
+        val pageIndex = layoutManager.findFirstVisibleItemPosition()
+        val pageView = layoutManager.findViewByPosition(pageIndex)
+
+        val pageHeight = pageView?.height ?: 1
+        val scrolledInPage = -(pageView?.top ?: 0)
+        val pagePercentage = scrolledInPage.toFloat() / pageHeight.toFloat()
+
+        return ReadingPosition(pageIndex, pagePercentage.coerceIn(0f, 1f))
+    }
+
+    fun saveCurrentPage(readingPosition: ReadingPosition) {
+        pageCountManager.savePageCount(bookId, readingPosition)
+    }
+
+    fun loadPageCount(): ReadingPosition? {
+        return pageCountManager.loadPageCount(bookId)
     }
 
     fun getTitle(): String {
@@ -1550,10 +1592,9 @@ class PdfReadViewModel @Inject constructor(
                         _pageBitmaps.tryEmit(index to cached)
                         return@launch
                     }
-
                     val bmp = pdfRendererManager.renderPage(index, pageSizes[index])
                     cache.put(index, bmp)
-                    _pageBitmaps.emit(index to bmp)
+                    _pageBitmaps.tryEmit(index to bmp)
                 } catch (e: Exception) {
                     Log.e("PdfDebug", "Error rendering page $index: ${e.message}", e)
                 }
@@ -1565,6 +1606,7 @@ class PdfReadViewModel @Inject constructor(
 
 
     suspend fun storeBitmapInFile() = coroutineScope {
+        diskCacheManager.clear()
         for ((index, bitmap) in cache.snapshot()) {
             launch(Dispatchers.IO) {
                 try {
@@ -1579,6 +1621,12 @@ class PdfReadViewModel @Inject constructor(
                 }
             }
         }
+    }
+
+    fun clearRenderJobs() {
+        renderJobs.values.forEach { it.cancel() }
+        renderJobs.clear()
+        cache.evictAll()
     }
 
     override fun onCleared() {

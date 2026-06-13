@@ -6,6 +6,7 @@ import android.content.res.Resources
 import android.graphics.Bitmap
 import android.graphics.Matrix
 import android.graphics.PointF
+import android.graphics.Rect
 import android.util.Log
 import android.view.GestureDetector
 import android.view.MotionEvent
@@ -50,6 +51,10 @@ class PdfTouchHandler(
         fun clearSelectedHighlight(isClear: Boolean, isInsideCenterSquare: Boolean = false)
 
         fun onSmoothScrollFinished()
+
+        fun saveCurrentPage()
+
+        fun loadVisiblePagesWords()
     }
 
 
@@ -91,8 +96,6 @@ class PdfTouchHandler(
     var activePointerType: String? = null
 
     var isMove = false
-
-    var isAutoScrolling = false
 
     fun updatePointer(start: PointF?, end: PointF?) {
         startPointer = start
@@ -137,16 +140,6 @@ class PdfTouchHandler(
                     val start = PointF(startPointer!!.x, startPointer!!.y + -dy)
                     val end = PointF(endPointer!!.x, endPointer!!.y + -dy)
                     updatePointer(start, end)
-                }
-            }
-
-            override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
-                super.onScrollStateChanged(recyclerView, newState)
-                if (newState == RecyclerView.SCROLL_STATE_IDLE) {
-                    if (isAutoScrolling) {
-                        isAutoScrolling = false
-                        listener?.onSmoothScrollFinished()
-                    }
                 }
             }
         })
@@ -456,6 +449,9 @@ class PdfTouchHandler(
                 }
                 container.postOnAnimation(this)
             } else {
+                Log.v("STOPPPPPPPPPPPPPPPPPPPP", "loaddddddd")
+                listener?.saveCurrentPage()
+                listener?.loadVisiblePagesWords()
                 if (((startPointer != null && endPointer != null) || isTapConfirmHighlight == true) && scroller.isFinished)
                     listener?.showPopupAfterDrag()
             }

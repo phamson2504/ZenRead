@@ -202,10 +202,6 @@ class PdfReadAdapter(
         notifyItemChanged(index, "bitmap")
     }
 
-    fun updateBitmapForMove(index: Int, bitmap: Bitmap){
-        bitmaps[index] = bitmap
-        notifyItemChanged(index)
-    }
 
     override fun onViewRecycled(holder: PageViewHolder) {
         super.onViewRecycled(holder)

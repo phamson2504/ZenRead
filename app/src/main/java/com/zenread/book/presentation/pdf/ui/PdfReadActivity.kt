@@ -6,8 +6,10 @@ import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.PointF
 import android.graphics.RectF
+import android.net.Uri
 import android.os.Bundle
 import android.text.method.ScrollingMovementMethod
+import android.util.Log
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.ViewGroup
@@ -38,6 +40,7 @@ import com.zenread.book.domain.model.WordInfo
 import com.zenread.book.presentation.pdf.MarksState
 import com.zenread.book.presentation.pdf.PageMark
 import com.zenread.book.presentation.pdf.PointerIndex
+import com.zenread.book.presentation.pdf.ReadingPosition
 import com.zenread.book.presentation.pdf.ScrollLinearLayoutManager
 import com.zenread.book.presentation.pdf.adapter.PdfReadAdapter
 import com.zenread.book.presentation.pdf.gesture.PdfTouchHandler
@@ -51,6 +54,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
+import kotlin.Int
 import kotlin.math.abs
 
 @AndroidEntryPoint
@@ -98,15 +102,16 @@ class PdfReadActivity : BaseActivity<ActivityPdfReadBinding>(),
         layoutManager = ScrollLinearLayoutManager(this, RecyclerView.VERTICAL, false)
 
         recyclerView.layoutManager = layoutManager
+
         binding.container.post {
             val screenWidth = binding.container.width
-            // Load PDF
             viewModel.loadPdf(uri, screenWidth) {
                 adapter.updatePageSizes(viewModel.pageSizes)
+                viewModel.loadConfirmedHighlight()
+                loadVisiblePagesWords()
             }
-            viewModel.loadConfirmedHighlight()
+            moveToPage()
         }
-
 
         adapter =
             PdfReadAdapter(
@@ -127,20 +132,22 @@ class PdfReadActivity : BaseActivity<ActivityPdfReadBinding>(),
                 val last = lm.findLastVisibleItemPosition()
                 if (first == RecyclerView.NO_POSITION || last == RecyclerView.NO_POSITION) return
                 val center = (first + last) / 2
+
                 if ((currentPage == 0 || abs(center - currentPage) >= 0) && !isScrollToPage) {
                     currentPage = center
-                    viewModel.preload(center, windowSize = 10)
+                    viewModel.preload(center)
                 }
                 setChapterFromTocItem()
             }
         })
-        val current = resources.configuration.orientation
+
+        val currentOrientation = resources.configuration.orientation
         if (viewModel.lastOrientation != Configuration.ORIENTATION_UNDEFINED &&
-            viewModel.lastOrientation != current
+            viewModel.lastOrientation != currentOrientation
         ) {
-            // detect xoay màn hình
+            onOrientationChanged()
         }
-        viewModel.lastOrientation = current
+        viewModel.lastOrientation = currentOrientation
 
         binding.ivTemp.isVisible = false
 
@@ -157,10 +164,8 @@ class PdfReadActivity : BaseActivity<ActivityPdfReadBinding>(),
         pdfTouchHandler.setOnPdfTouchListener(this)
         pdfTouchHandler.attach()
 
-        //pop text a action
         popupTextAction = PopupTextAction(this, binding.root)
         popupTextAction.setOnTextActionListener(this)
-
 
 
         popupReaderMenu = PopupReaderMenu(this, binding.root as ViewGroup)
@@ -168,6 +173,18 @@ class PdfReadActivity : BaseActivity<ActivityPdfReadBinding>(),
         popupReaderMenu.setOnTextActionListener(this)
         popupReaderMenu.setTitle(viewModel.getTitle())
     }
+
+    fun onOrientationChanged() {
+        viewModel.clearRenderJobs()
+        binding.container.post {
+            val screenWidth = binding.container.width
+            viewModel.updatePageSize(screenWidth) {
+                adapter.updatePageSizes(viewModel.pageSizes)
+            }
+            viewModel.loadConfirmedHighlight()
+        }
+    }
+
 
     override fun marksInItemOverlay(
         isStartPointer: Boolean,
@@ -323,9 +340,24 @@ class PdfReadActivity : BaseActivity<ActivityPdfReadBinding>(),
         }
     }
 
+    fun moveToPage() {
+        val readingPosition = viewModel.loadPageCount()
+        currentPage = readingPosition?.pageIndex ?: 0
+        val lm = binding.pdfRecyclerView.layoutManager as LinearLayoutManager
+        val pageIndex = readingPosition?.pageIndex
+        if (pageIndex != null) {
+            val sizePage = viewModel.pageSizes[pageIndex]
+            val currentY = (readingPosition.pagePercentage * sizePage.height).toInt()
+            lm.scrollToPositionWithOffset(currentPage, -currentY)
+
+        } else {
+            lm.scrollToPositionWithOffset(currentPage, 0)
+        }
+
+    }
+
     override fun captureItemsWithOffset(): Pair<Bitmap, Int> {
         return viewModel.captureItems(binding.pdfRecyclerView)
-
     }
 
     var isFirstTimeTap = false
@@ -371,6 +403,19 @@ class PdfReadActivity : BaseActivity<ActivityPdfReadBinding>(),
         }
     }
 
+    override fun saveCurrentPage() {
+        val readingPosition = viewModel.getCurrentPosition(binding.pdfRecyclerView)
+        viewModel.saveCurrentPage(readingPosition)
+    }
+
+    override fun loadVisiblePagesWords() {
+        val lm = binding.pdfRecyclerView.layoutManager as LinearLayoutManager
+        val first = lm.findFirstVisibleItemPosition()
+        val last = lm.findLastVisibleItemPosition()
+        val visiblePage = (first..last).toList()
+        viewModel.loadVisiblePagesWords(visiblePage)
+    }
+
     fun updateHighlightSearchVis() {
         val first = (layoutManager.findFirstVisibleItemPosition() - 5).coerceAtLeast(0)
         val last =
@@ -388,43 +433,54 @@ class PdfReadActivity : BaseActivity<ActivityPdfReadBinding>(),
         if (child != null) {
             val pageIndex = binding.pdfRecyclerView.getChildAdapterPosition(child)
 
-            val words = viewModel.coordinatesPdfTouch(
-                child.width,
-                child.height,
-                x,
-                y - child.y,
-                pageIndex,
-            )
+//            val words = viewModel.coordinatesPdfTouch(
+//                child.width,
+//                child.height,
+//                x,
+//                y - child.y,
+//                pageIndex,
+//            )
 
-            val itemView = binding.pdfRecyclerView.measureItemAt(pageIndex)
+            val words = viewModel.pageWords[pageIndex]
+            if (words != null) {
+                val pointWords = viewModel.coordinatesPdfTouch(
+                    child.width,
+                    child.height,
+                    words,
+                    x,
+                    y - child.y,
+                    pageIndex,
+                )
+                val itemView = binding.pdfRecyclerView.measureItemAt(pageIndex)
 
-            val coordinatesPdfTouch = viewModel.pdfToItemRect(
-                words.map { it.rect },
-                itemView.width.toInt(),
-                itemView.height.toInt(),
-                pageIndex
-            )
-
-            if (coordinatesPdfTouch.isNotEmpty()) {
-                clearSelectedHighlights()
-                isFirstTimeTap = true
-                viewModel.clearSelectedHighlight()
-                val sorted = coordinatesPdfTouch.sortedWith(
-                    compareBy<RectF> { it.top }
-                        .thenBy { it.left }
+                val coordinatesPdfTouch = viewModel.pdfToItemRect(
+                    pointWords.map { it.rect },
+                    itemView.width.toInt(),
+                    itemView.height.toInt(),
+                    pageIndex
                 )
 
-                val startPointer = PointF(sorted.first().left, sorted.first().bottom + child.y)
-                val endPointer = PointF(sorted.last().right, sorted.last().bottom + child.y)
-
                 if (coordinatesPdfTouch.isNotEmpty()) {
-                    viewModel.updateSelectedHighlights(
-                        pageIndex,
-                        coordinatesPdfTouch,
-                        words.map { it.rect },
-                        words.map { it.word })
-                    pdfTouchHandler.updatePointer(startPointer, endPointer)
-                    showPopup()
+                    clearSelectedHighlights()
+                    isFirstTimeTap = true
+                    viewModel.clearSelectedHighlight()
+                    val sorted = coordinatesPdfTouch.sortedWith(
+                        compareBy<RectF> { it.top }
+                            .thenBy { it.left }
+                    )
+
+                    val startPointer = PointF(sorted.first().left, sorted.first().bottom + child.y)
+                    val endPointer = PointF(sorted.last().right, sorted.last().bottom + child.y)
+
+                    if (coordinatesPdfTouch.isNotEmpty()) {
+                        viewModel.updateSelectedHighlights(
+                            pageIndex,
+                            coordinatesPdfTouch,
+                            pointWords.map { it.rect },
+                            pointWords.map { it.word })
+                        pdfTouchHandler.updatePointer(startPointer, endPointer)
+                        showPopup()
+                    }
                 }
             }
         }
