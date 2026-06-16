@@ -3,6 +3,7 @@ package com.zenread.book.presentation.pdf.adapter
 import android.annotation.SuppressLint
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.util.Log
 import android.util.Size
 import android.view.LayoutInflater
 import android.view.ViewGroup
@@ -87,7 +88,12 @@ class PdfReadAdapter(
         overlay.layoutParams.width = pageSizes[position].width
         overlay.layoutParams.height = pageSizes[position].height
         overlay.requestLayout()
-
+        overlay.post {
+            Log.d(
+                "SIZE",
+                "overlay=${overlay.width}x${overlay.height}"
+            )
+        }
         val marks = selectedMarksOfPage[position]?.screenMarks
         overlay.clearSelectedMarks()
         marks?.let { overlay.setSelectedMarks(it) }

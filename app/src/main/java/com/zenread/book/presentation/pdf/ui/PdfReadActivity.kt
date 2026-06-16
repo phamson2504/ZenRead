@@ -56,6 +56,7 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import kotlin.Int
 import kotlin.math.abs
+import kotlin.math.log
 
 @AndroidEntryPoint
 class PdfReadActivity : BaseActivity<ActivityPdfReadBinding>(),
@@ -108,7 +109,7 @@ class PdfReadActivity : BaseActivity<ActivityPdfReadBinding>(),
             viewModel.loadPdf(uri, screenWidth) {
                 adapter.updatePageSizes(viewModel.pageSizes)
                 viewModel.loadConfirmedHighlight()
-                loadVisiblePagesWords()
+                popupReaderMenu.setPageSeekBar(viewModel.pageCount)
             }
             moveToPage()
         }
@@ -138,6 +139,7 @@ class PdfReadActivity : BaseActivity<ActivityPdfReadBinding>(),
                     viewModel.preload(center)
                 }
                 setChapterFromTocItem()
+                popupReaderMenu.setCurrentPageSeekBar(currentPage)
             }
         })
 
@@ -172,6 +174,10 @@ class PdfReadActivity : BaseActivity<ActivityPdfReadBinding>(),
         binding.root.addView(popupReaderMenu.view)
         popupReaderMenu.setOnTextActionListener(this)
         popupReaderMenu.setTitle(viewModel.getTitle())
+
+        binding.hiddenCornerBtn.setOnClickListener {
+            Log.v("save page", "saved")
+        }
     }
 
     fun onOrientationChanged() {
@@ -277,11 +283,16 @@ class PdfReadActivity : BaseActivity<ActivityPdfReadBinding>(),
         showPopup()
     }
 
+    var isTheFirstTime = true
     override fun setupObserver() {
         lifecycleScope.launch {
             viewModel.pageBitmaps.collect { (index, bmp) ->
                 adapter.updateBitmap(index, bmp)
                 adapter.updateConfirmedMarks(index)
+                if (isTheFirstTime && viewModel.areVisiblePagesReady(binding.pdfRecyclerView)){
+                    loadVisiblePagesWords()
+                    isTheFirstTime = false
+                }
             }
         }
         viewModel.selectedHighlight.observe(this) { highlights ->
@@ -349,7 +360,7 @@ class PdfReadActivity : BaseActivity<ActivityPdfReadBinding>(),
             val sizePage = viewModel.pageSizes[pageIndex]
             val currentY = (readingPosition.pagePercentage * sizePage.height).toInt()
             lm.scrollToPositionWithOffset(currentPage, -currentY)
-
+            popupReaderMenu.setCurrentPageSeekBar(currentPage)
         } else {
             lm.scrollToPositionWithOffset(currentPage, 0)
         }
@@ -873,6 +884,13 @@ class PdfReadActivity : BaseActivity<ActivityPdfReadBinding>(),
             pageIndex,
             firstRect
         )
+    }
+
+    override fun onSeekBarChangeToPage(pageIndex: Int) {
+        val lm = binding.pdfRecyclerView.layoutManager as LinearLayoutManager
+        lm.scrollToPositionWithOffset(pageIndex,0)
+        viewModel.preload(pageIndex)
+        Log.v("Page preload renderPageAsync Ready", pageIndex.toString())
     }
 
     private fun showError(message: String) {

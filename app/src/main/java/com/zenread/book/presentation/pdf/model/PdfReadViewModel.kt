@@ -75,6 +75,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
+import kotlin.collections.get
 
 @HiltViewModel
 class PdfReadViewModel @Inject constructor(
@@ -94,7 +96,6 @@ class PdfReadViewModel @Inject constructor(
 
     private val renderSemaphore = Semaphore(deviceProfile.renderSemaphore)
     private val renderJobs = LinkedHashMap<Int, Job>()
-    private val MAX_RENDER_JOBS = 5
     val preloadDistance = deviceProfile.preloadDistance
 
     private val pageSelect = mutableMapOf<Int, List<WordInfo>>()
@@ -362,10 +363,12 @@ class PdfReadViewModel @Inject constructor(
         loadWordsJob = viewModelScope.launch {
             delay(300)
             try {
+                val keysToRemove = pageWords.keys.filter { it !in visiblePages }
+                keysToRemove.forEach { pageWords.remove(it) }
+
                 coroutineScope {
                     val deferred = visiblePages.map { pageIndex ->
                         async(Dispatchers.IO) {
-                            pageWords.clear()
                             pageWords[pageIndex]?.let {
                                 return@async pageIndex to it
                             }
@@ -1120,6 +1123,7 @@ class PdfReadViewModel @Inject constructor(
                 confirmId = mark.confirmId.takeIf { it != -1L } ?: confirmId,
                 marksState = MarksState.CONFIRM,
                 screenMarks = mark.screenMarks,
+                pdfMarks = mark.pdfMarks,
                 color = mark.color ?: "#4A90E2".toColorInt(),
                 text = mark.text,
                 contentNote = noteContent,
@@ -1475,11 +1479,23 @@ class PdfReadViewModel @Inject constructor(
         val start = (center - windowSize).coerceAtLeast(0)
         val end = (center + windowSize).coerceAtMost(pageCount - 1)
 
-        val indices = (start..end).sortedBy { abs(it - center) }
+        val targetPages = (start..end).toSet()
 
-        for (i in indices) {
-            if ((cache.get(i) == null)) {
-                renderPageAsync(i)
+        renderJobs.keys
+            .filter { it !in targetPages }
+            .forEach { page ->
+
+                renderJobs[page]?.cancel()
+                renderJobs.remove(page)
+            }
+
+        val orderedPages =
+            targetPages.sortedBy { abs(it - center) }
+
+        orderedPages.forEach { page ->
+
+            if (cache.get(page) == null) {
+                renderPageAsync(page)
             }
         }
     }
@@ -1572,36 +1588,99 @@ class PdfReadViewModel @Inject constructor(
         return title
     }
 
-    fun renderPageAsync(index: Int) {
-        // If there are too many jobs → cancel the oldest job
-        if (renderJobs.size >= MAX_RENDER_JOBS) {
-            val oldestKey = renderJobs.entries.first().key
-            renderJobs[oldestKey]?.cancel()
-            renderJobs.remove(oldestKey)
-        }
+    //    fun renderPageAsync(index: Int) {
+//
+//        // If there are too many jobs → cancel the oldest job
+//        if (renderJobs.size >= MAX_RENDER_JOBS) {
+//            val oldestKey = renderJobs.entries.first().key
+//            renderJobs[oldestKey]?.cancel()
+//            renderJobs.remove(oldestKey)
+//        }
+//        // If there is already a job for this index → cancel it
+//        renderJobs[index]?.cancel()
+//
+//        val job = viewModelScope.launch(Dispatchers.IO) {
+//            renderSemaphore.withPermit {
+//                try {
+//                    val cached = diskCacheManager.loadBitmap(index)
+//                    Log.v("Page preload renderPageAsync", " $index")
+//                    if (cached != null && !cached.isRecycled) {
+//                        cache.put(index, cached)
+//                        _pageBitmaps.tryEmit(index to cached)
+//                        return@launch
+//                    }
+//                    val bmp = pdfRendererManager.renderPage(index, pageSizes[index])
+//                    cache.put(index, bmp)
+//                    _pageBitmaps.tryEmit(index to bmp)
+//                } catch (e: Exception) {
+//                    Log.e("PdfDebug", "Error rendering page $index: ${e.message}", e)
+//                }
+//            }
+//        }
+//
+//        renderJobs[index] = job
+//    }
+    fun areVisiblePagesReady(recyclerView: RecyclerView): Boolean {
+        val lm = recyclerView.layoutManager as LinearLayoutManager
 
-        // If there is already a job for this index → cancel it
-        renderJobs[index]?.cancel()
+        val first = lm.findFirstVisibleItemPosition()
+        val last = lm.findLastVisibleItemPosition()
+
+        return (first..last).all { page ->
+            isPageRendered(page)
+        }
+    }
+    fun isPageRendered(index: Int): Boolean {
+        return cache.get(index) != null
+    }
+    fun renderPageAsync(index: Int) {
+
+        if (cache.get(index) != null) return
+
+        if (renderJobs[index]?.isActive == true) return
 
         val job = viewModelScope.launch(Dispatchers.IO) {
-            renderSemaphore.withPermit {
-                try {
+
+            try {
+                renderSemaphore.withPermit {
+
                     val cached = diskCacheManager.loadBitmap(index)
+
                     if (cached != null && !cached.isRecycled) {
+
+                        ensureActive()
+
                         cache.put(index, cached)
                         _pageBitmaps.tryEmit(index to cached)
-                        return@launch
+
+                        return@withPermit
                     }
-                    val bmp = pdfRendererManager.renderPage(index, pageSizes[index])
+
+                    val bmp = pdfRendererManager.renderPage(
+                        index,
+                        pageSizes[index]
+                    )
+
+                    ensureActive()
+
                     cache.put(index, bmp)
                     _pageBitmaps.tryEmit(index to bmp)
-                } catch (e: Exception) {
-                    Log.e("PdfDebug", "Error rendering page $index: ${e.message}", e)
                 }
+            } catch (_: CancellationException) {
+            } catch (e: Exception) {
+                Log.e(
+                    "PdfDebug",
+                    "Error rendering page $index",
+                    e
+                )
             }
         }
 
         renderJobs[index] = job
+
+        job.invokeOnCompletion {
+            renderJobs.remove(index)
+        }
     }
 
 

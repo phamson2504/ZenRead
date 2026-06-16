@@ -35,4 +35,10 @@
         android:layout_height="match_parent"
         android:adjustViewBounds="false"
         android:scaleType="matrix" />
+    <View
+        android:id="@+id/hiddenCornerBtn"
+        android:layout_width="80dp"
+        android:layout_height="80dp"
+        android:layout_gravity="top|end"
+        android:background="@android:color/transparent" />
 </FrameLayout>

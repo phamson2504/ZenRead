@@ -4,7 +4,9 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.PointF
 import android.graphics.RectF
 import android.util.AttributeSet
@@ -12,6 +14,7 @@ import android.view.View
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.createBitmap
 import com.zenread.book.R
+import com.zenread.book.R.id.ic_back_btn
 import com.zenread.book.presentation.pdf.MarksState
 
 class MarksOverlay @JvmOverloads constructor(
@@ -36,22 +39,27 @@ class MarksOverlay @JvmOverloads constructor(
 
     private var highlights = mutableListOf<Highlight>()
 
-    private var startPointer: PointF? = null
-    private var endPointer: PointF? = null
+//    private var startPointer: PointF? = null
+//    private var endPointer: PointF? = null
 
     private var sizePointer: Int = 60
 
-    private var startPointerBitmap: Bitmap? = null
-    private var endPointerBitmap: Bitmap? = null
+    private var isBookmark = false
 
-    private var startPointerRect: RectF? = null
-    private var endPointerRect: RectF? = null
+//    private var startPointerBitmap: Bitmap? = null
+//    private var endPointerBitmap: Bitmap? = null
+//
+//    private var startPointerRect: RectF? = null
+//    private var endPointerRect: RectF? = null
 
-    // ===== MARKS =====
     fun setSelectedMarks(marks: List<RectF>) {
         clearSelectedMarks()
         if (marks.isNotEmpty()) highlights.add(Highlight(marks, MarksState.LONG_PRESSED))
         invalidate()
+    }
+
+    fun setIsBookmark() {
+        isBookmark = true
     }
 
     fun setVoicedMarks(marks: List<RectF>) {
@@ -89,7 +97,7 @@ class MarksOverlay @JvmOverloads constructor(
         invalidate()
     }
 
-    fun setSearchMarks(marks: List<RectF>, color: Int){
+    fun setSearchMarks(marks: List<RectF>, color: Int) {
         highlights.add(
             Highlight(
                 marks,
@@ -112,7 +120,7 @@ class MarksOverlay @JvmOverloads constructor(
     }
 
     fun clearVoicedMarks() {
-        highlights.filter {it.marksState == MarksState.VOICED }
+        highlights.filter { it.marksState == MarksState.VOICED }
             .forEach { highlights.remove(it) }
         invalidate()
     }
@@ -140,9 +148,9 @@ class MarksOverlay @JvmOverloads constructor(
             highlightPaint.apply {
                 color = highlight.color ?: ContextCompat.getColor(
                     context,
-                    if (highlight.marksState == MarksState.VOICED){
+                    if (highlight.marksState == MarksState.VOICED) {
                         R.color.lavender
-                    }else{
+                    } else {
                         R.color.selected_color_default
                     }
                 )
@@ -169,59 +177,85 @@ class MarksOverlay @JvmOverloads constructor(
             }
         }
 
-        startPointer?.let { sp ->
-            val bmp = getStartPointerBitmap()
-            val w = bmp.width
-            val h = bmp.height
-            val left = sp.x - w
-            val top = sp.y
-            startPointerRect = RectF(left, top, left + w, top + h)
-            canvas.drawBitmap(bmp, left, top, null)
+//        if (isBookmark) {
+           drawBookmark(canvas)
+
+//        startPointer?.let { sp ->
+//            val bmp = getStartPointerBitmap()
+//            val w = bmp.width
+//            val h = bmp.height
+//            val left = sp.x - w
+//            val top = sp.y
+//            startPointerRect = RectF(left, top, left + w, top + h)
+//            canvas.drawBitmap(bmp, left, top, null)
+//        }
+//
+//        endPointer?.let { ep ->
+//            val bmp = getEndPointerBitmap()
+//            val w = bmp.width
+//            val h = bmp.height
+//            val left = ep.x
+//            val top = ep.y
+//            endPointerRect = RectF(left, top, left + w, top + h)
+//            canvas.drawBitmap(bmp, left, top, null)
+//        }
+    }
+    private val bookmarkPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.parseColor("#0D8FF1")
+        style = Paint.Style.FILL
+    }
+
+    private fun drawBookmark(canvas: Canvas) {
+        val w = 36.dp()
+        val h = 54.dp()
+
+        val left = width - w
+
+        val path = Path().apply {
+            moveTo(left.toFloat(), 0f)
+            lineTo(width.toFloat(), 0f)
+            lineTo(width.toFloat(), h.toFloat())
+            lineTo((left + w / 2).toFloat(), (h - 12.dp()).toFloat())
+            lineTo(left.toFloat(), h.toFloat())
+            close()
         }
 
-        endPointer?.let { ep ->
-            val bmp = getEndPointerBitmap()
-            val w = bmp.width
-            val h = bmp.height
-            val left = ep.x
-            val top = ep.y
-            endPointerRect = RectF(left, top, left + w, top + h)
-            canvas.drawBitmap(bmp, left, top, null)
-        }
+        canvas.drawPath(path, bookmarkPaint)
     }
+    private fun Int.dp(): Int {
+        return (this * resources.displayMetrics.density).toInt()
+    }
+//    private fun getStartPointerBitmap(): Bitmap {
+//        if (startPointerBitmap == null) {
+//            startPointerBitmap =
+//                getBitmapFromDrawable(context, R.drawable.ic_start_pointer, sizePointer)
+//        }
+//        return startPointerBitmap!!
+//    }
+//
+//    private fun getEndPointerBitmap(): Bitmap {
+//        if (endPointerBitmap == null) {
+//            endPointerBitmap =
+//                getBitmapFromDrawable(context, R.drawable.ic_end_pointer, sizePointer)
+//        }
+//        return endPointerBitmap!!
+//    }
 
-    // ===== LAZY LOAD BITMAP =====
-    private fun getStartPointerBitmap(): Bitmap {
-        if (startPointerBitmap == null) {
-            startPointerBitmap =
-                getBitmapFromDrawable(context, R.drawable.ic_start_pointer, sizePointer)
-        }
-        return startPointerBitmap!!
-    }
+//    @SuppressLint("UseKtx")
+//    private fun getBitmapFromDrawable(context: Context, drawableId: Int, size: Int): Bitmap {
+//        val drawable = ContextCompat.getDrawable(context, drawableId)!!
+//        val bitmap = createBitmap(drawable.intrinsicWidth, drawable.intrinsicHeight)
+//        val canvas = Canvas(bitmap)
+//        drawable.setBounds(0, 0, canvas.width, canvas.height)
+//        drawable.draw(canvas)
+//        return Bitmap.createScaledBitmap(bitmap, size, size, true)
+//    }
 
-    private fun getEndPointerBitmap(): Bitmap {
-        if (endPointerBitmap == null) {
-            endPointerBitmap =
-                getBitmapFromDrawable(context, R.drawable.ic_end_pointer, sizePointer)
-        }
-        return endPointerBitmap!!
-    }
-
-    @SuppressLint("UseKtx")
-    private fun getBitmapFromDrawable(context: Context, drawableId: Int, size: Int): Bitmap {
-        val drawable = ContextCompat.getDrawable(context, drawableId)!!
-        val bitmap = createBitmap(drawable.intrinsicWidth, drawable.intrinsicHeight)
-        val canvas = Canvas(bitmap)
-        drawable.setBounds(0, 0, canvas.width, canvas.height)
-        drawable.draw(canvas)
-        return Bitmap.createScaledBitmap(bitmap, size, size, true)
-    }
-
-    override fun onDetachedFromWindow() {
-        super.onDetachedFromWindow()
-        startPointerBitmap?.recycle()
-        endPointerBitmap?.recycle()
-        startPointerBitmap = null
-        endPointerBitmap = null
-    }
+//    override fun onDetachedFromWindow() {
+//        super.onDetachedFromWindow()
+//        startPointerBitmap?.recycle()
+//        endPointerBitmap?.recycle()
+//        startPointerBitmap = null
+//        endPointerBitmap = null
+//    }
 }

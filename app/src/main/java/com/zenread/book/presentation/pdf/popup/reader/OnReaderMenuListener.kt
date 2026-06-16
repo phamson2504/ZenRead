@@ -1,6 +1,7 @@
 package com.zenread.book.presentation.pdf.popup.reader
 
 import android.graphics.RectF
+import android.widget.SeekBar
 import com.zenread.book.domain.model.BookmarkItem
 import com.zenread.book.domain.model.SearchTextResult
 import com.zenread.book.domain.model.TocItem
@@ -22,4 +23,6 @@ interface OnReaderMenuListener {
     fun moveToPageClicked(pageIndex: Int)
 
     fun moveToHighlight(pageIndex: Int, firstRect: RectF)
+
+    fun onSeekBarChangeToPage(pageIndex: Int)
 }

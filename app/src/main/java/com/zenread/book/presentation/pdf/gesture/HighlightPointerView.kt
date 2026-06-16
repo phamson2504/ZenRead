@@ -37,7 +37,7 @@ class HighlightPointerView @JvmOverloads constructor(
         invalidate()
     }
 
-    fun getSizePointer(): Int{
+    fun getSizePointer(): Int {
         return sizePointer
     }
 
@@ -78,6 +78,7 @@ class HighlightPointerView @JvmOverloads constructor(
 
         invalidate()
     }
+
     private var startInverted = false
     private var endInverted = false
 
@@ -95,7 +96,13 @@ class HighlightPointerView @JvmOverloads constructor(
         }
     }
 
-    override fun onDraw(canvas: Canvas) {
+    fun resetPointer() {
+        startInverted = false
+        endInverted = false
+    }
+
+    override @SuppressLint("DrawAllocation")
+    fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
 
         startPointer?.let { sp ->
@@ -106,7 +113,6 @@ class HighlightPointerView @JvmOverloads constructor(
             val (left, top) = if (startInverted) {
                 Pair(sp.x, sp.y)
             } else {
-                // Bình thường
                 Pair(sp.x - w, sp.y)
             }
             startPointerRect = RectF(left, top, left + w, top + h)
@@ -131,16 +137,19 @@ class HighlightPointerView @JvmOverloads constructor(
 
     }
 
+
     private fun getStartPointerBitmap(): Bitmap {
         if (startPointerBitmap == null) {
-            startPointerBitmap = getBitmapFromDrawable(context, R.drawable.ic_start_pointer, sizePointer)
+            startPointerBitmap =
+                getBitmapFromDrawable(context, R.drawable.ic_start_pointer, sizePointer)
         }
         return startPointerBitmap!!
     }
 
     private fun getEndPointerBitmap(): Bitmap {
         if (endPointerBitmap == null) {
-            endPointerBitmap = getBitmapFromDrawable(context, R.drawable.ic_end_pointer, sizePointer)
+            endPointerBitmap =
+                getBitmapFromDrawable(context, R.drawable.ic_end_pointer, sizePointer)
         }
         return endPointerBitmap!!
     }

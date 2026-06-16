@@ -104,6 +104,7 @@ class PdfTouchHandler(
         if (startPointer == null && endPointer == null) {
             highlightPointerView.removeStartPointer()
             highlightPointerView.removeEndPointer()
+            highlightPointerView.resetPointer()
             return
         }
 
@@ -449,9 +450,10 @@ class PdfTouchHandler(
                 }
                 container.postOnAnimation(this)
             } else {
-                Log.v("STOPPPPPPPPPPPPPPPPPPPP", "loaddddddd")
                 listener?.saveCurrentPage()
                 listener?.loadVisiblePagesWords()
+
+
                 if (((startPointer != null && endPointer != null) || isTapConfirmHighlight == true) && scroller.isFinished)
                     listener?.showPopupAfterDrag()
             }
@@ -462,8 +464,6 @@ class PdfTouchHandler(
         DynamicMinSpanScaleDetector(
             object : DynamicMinSpanScaleDetector.OnScaleListener {
                 override fun onScaleBegin(focusX: Float, focusY: Float): Boolean {
-                    -
-                    Log.v("detector.scaleFactor", "begin")
                     lastFocusX = focusX
                     lastFocusY = focusY
                     return true

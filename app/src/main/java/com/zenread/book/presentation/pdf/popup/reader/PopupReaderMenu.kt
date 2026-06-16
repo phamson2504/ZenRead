@@ -8,6 +8,7 @@ import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.widget.PopupWindow
+import android.widget.SeekBar
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.android.material.tabs.TabLayout
 import com.zenread.book.databinding.LayoutPopupTocBinding
@@ -76,6 +77,7 @@ class PopupReaderMenu(val context: Context, parent: ViewGroup) {
         binding.btnVolume.setOnClickListener {
             listener?.onClickVolumeUp()
         }
+
 
         binding.btnListBulleted.setOnClickListener {
             val popupTocBinding = LayoutPopupTocBinding.inflate(LayoutInflater.from(context))
@@ -153,6 +155,31 @@ class PopupReaderMenu(val context: Context, parent: ViewGroup) {
                 true
             } else false
         }
+
+        binding.pageSeekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+
+            override fun onProgressChanged(
+                seekBar: SeekBar?,
+                progress: Int,
+                fromUser: Boolean
+            ) {
+                if (fromUser) {
+                    listener?.onSeekBarChangeToPage(progress)
+                }
+            }
+
+            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {}
+        })
+    }
+
+    fun setPageSeekBar(pageCount: Int){
+        binding.pageSeekBar.max= pageCount - 1
+    }
+
+    fun setCurrentPageSeekBar(pageCount: Int){
+        binding.pageSeekBar.progress = pageCount
     }
 
     fun setTitle(titleName: String) {
