@@ -20,6 +20,7 @@ class PdfReadAdapter(
     private var pageSizes: List<Size>
 ) : RecyclerView.Adapter<PdfReadAdapter.PageViewHolder>() {
 
+    var bookmarkedPages: Set<Int> = emptySet()
     val idRemoveMap = mutableMapOf<Int, Long?>()
     val bitmaps = mutableMapOf<Int, Bitmap>()
 
@@ -37,6 +38,10 @@ class PdfReadAdapter(
 
     fun updateSearchMarks(pageIndex: Int) {
         notifyItemChanged(pageIndex, "searchMarks")
+    }
+
+    fun updateBookMarks(pageIndex: Int) {
+        notifyItemChanged(pageIndex, "bookMarks")
     }
 
     fun removeConfirmedMarks(pageIndex: Int, confirmId: Long?) {
@@ -88,12 +93,7 @@ class PdfReadAdapter(
         overlay.layoutParams.width = pageSizes[position].width
         overlay.layoutParams.height = pageSizes[position].height
         overlay.requestLayout()
-        overlay.post {
-            Log.d(
-                "SIZE",
-                "overlay=${overlay.width}x${overlay.height}"
-            )
-        }
+
         val marks = selectedMarksOfPage[position]?.screenMarks
         overlay.clearSelectedMarks()
         marks?.let { overlay.setSelectedMarks(it) }
@@ -116,7 +116,7 @@ class PdfReadAdapter(
         val searchHighlight = searchHighlight[position]
         overlay.clearSearchMarks()
         searchHighlight?.forEach { mark ->
-            mark.color?.let { overlay.setSearchMarks(mark.screenMarks,  it ) }
+            mark.color?.let { overlay.setSearchMarks(mark.screenMarks, it) }
         }
 
 
@@ -124,7 +124,8 @@ class PdfReadAdapter(
         overlay.clearVoicedMarks()
         voicedMarks?.let { overlay.setVoicedMarks(it) }
 
-
+        overlay.setDeleteBookmark()
+        if (position in bookmarkedPages) overlay.setIsBookmark()
     }
 
     override fun onBindViewHolder(
@@ -144,7 +145,7 @@ class PdfReadAdapter(
                                 scaleType = ImageView.ScaleType.FIT_CENTER
                                 setBackgroundColor(Color.TRANSPARENT)
                             }
-                        }else {
+                        } else {
                             holder.binding.pageImageView.setImageDrawable(null)
                         }
                     }
@@ -182,6 +183,9 @@ class PdfReadAdapter(
                         }
                     }
 
+                    "bookMarks_add" -> overlay.setIsBookmark()
+                    "bookMark_delete"-> overlay.setDeleteBookmark()
+
                     "voicedMarks" -> {
                         val voicedMarks = voicedHighlight[position]?.screenMarks ?: emptyList()
                         overlay.setVoicedMarks(voicedMarks)
@@ -208,6 +212,12 @@ class PdfReadAdapter(
         notifyItemChanged(index, "bitmap")
     }
 
+    fun setBookmarks(newPages: Set<Int>) {
+        val oldPages = bookmarkedPages
+        bookmarkedPages = newPages
+        (newPages - oldPages).forEach { notifyItemChanged(it, "bookMarks_add") }
+        (oldPages - newPages).forEach { notifyItemChanged(it, "bookMark_delete")}
+    }
 
     override fun onViewRecycled(holder: PageViewHolder) {
         super.onViewRecycled(holder)

@@ -4,6 +4,9 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.PointF
 import android.graphics.RectF
 import android.util.AttributeSet
@@ -26,6 +29,13 @@ class HighlightPointerView @JvmOverloads constructor(
     private var endPointerRect: RectF? = null
 
     private var sizePointer: Int = 60
+
+    private var showBookmark = false
+
+    fun updateShowBookmark(isShow: Boolean){
+        showBookmark = isShow
+        invalidate()
+    }
 
     fun setStartPointerPosition(startPointer: PointF) {
         this.startPointer = startPointer
@@ -135,6 +145,33 @@ class HighlightPointerView @JvmOverloads constructor(
             canvas.drawBitmap(bmp, left, top, null)
         }
 
+        if (showBookmark) drawBookmark(canvas)
+    }
+
+    private val bookmarkPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.parseColor("#0D8FF1")
+        style = Paint.Style.FILL
+    }
+
+    private fun drawBookmark(canvas: Canvas) {
+        val w = 18 .dp()
+        val h = 28 .dp()
+
+        val left = width - w
+
+        val path = Path().apply {
+            moveTo(left.toFloat(), 0f)
+            lineTo(width.toFloat(), 0f)
+            lineTo(width.toFloat(), h.toFloat())
+            lineTo((left + w / 2).toFloat(), (h - 6 .dp()).toFloat())
+            lineTo(left.toFloat(), h.toFloat())
+            close()
+        }
+
+        canvas.drawPath(path, bookmarkPaint)
+    }
+    private fun Int.dp(): Int {
+        return (this * resources.displayMetrics.density).toInt()
     }
 
 

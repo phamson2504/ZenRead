@@ -15,18 +15,11 @@ class BookMarkService @Inject constructor(
             pageNumber = pageNumber,
             note = note
         )
+        bookmarkRepository.insert(bookMark)
     }
 
-    suspend fun getHighlightsByBook(bookId: Int): Map<Int, PageMark> {
-        val bookmarkList = bookmarkRepository.getBookmarksByBook(bookId)
-
-        return bookmarkList.associate { bookmark ->
-            bookmark.pageNumber!! to PageMark(
-                screenMarks = emptyList(),
-                marksState = MarksState.MARK_BOOK,
-                contentNote = bookmark.note,
-            )
-        }
+    suspend fun getBookmarksByBook(bookId: Int): List<Bookmark> {
+        return bookmarkRepository.getBookmarksByBook(bookId)
     }
 
     suspend fun deleteByBookAndPage(bookId: Int, pageIndex: Int) {

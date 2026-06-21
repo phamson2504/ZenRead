@@ -2,6 +2,7 @@ package com.zenread.book.presentation.pdf.popup.reader
 
 import android.graphics.RectF
 import android.widget.SeekBar
+import com.zenread.book.domain.model.Bookmark
 import com.zenread.book.domain.model.BookmarkItem
 import com.zenread.book.domain.model.SearchTextResult
 import com.zenread.book.domain.model.TocItem
@@ -25,4 +26,8 @@ interface OnReaderMenuListener {
     fun moveToHighlight(pageIndex: Int, firstRect: RectF)
 
     fun onSeekBarChangeToPage(pageIndex: Int)
+
+    fun getListBookmark(): List<BookmarkItem>
+
+    fun moveToPage(pageIndex: Int)
 }

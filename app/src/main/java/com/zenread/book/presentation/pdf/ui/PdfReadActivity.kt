@@ -15,6 +15,7 @@ import android.view.LayoutInflater
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.view.inputmethod.InputMethodManager
+import android.widget.EditText
 import android.widget.Scroller
 import android.widget.Toast
 import androidx.activity.viewModels
@@ -43,6 +44,7 @@ import com.zenread.book.presentation.pdf.PointerIndex
 import com.zenread.book.presentation.pdf.ReadingPosition
 import com.zenread.book.presentation.pdf.ScrollLinearLayoutManager
 import com.zenread.book.presentation.pdf.adapter.PdfReadAdapter
+import com.zenread.book.presentation.pdf.dialog.BookmarkDialog
 import com.zenread.book.presentation.pdf.gesture.PdfTouchHandler
 import com.zenread.book.presentation.pdf.model.PdfReadViewModel
 import com.zenread.book.presentation.pdf.popup.action.OnTextActionListener
@@ -109,9 +111,13 @@ class PdfReadActivity : BaseActivity<ActivityPdfReadBinding>(),
             viewModel.loadPdf(uri, screenWidth) {
                 adapter.updatePageSizes(viewModel.pageSizes)
                 viewModel.loadConfirmedHighlight()
+
                 popupReaderMenu.setPageSeekBar(viewModel.pageCount)
+
+                viewModel.getBookmark()
             }
             moveToPage()
+
         }
 
         adapter =
@@ -140,6 +146,7 @@ class PdfReadActivity : BaseActivity<ActivityPdfReadBinding>(),
                 }
                 setChapterFromTocItem()
                 popupReaderMenu.setCurrentPageSeekBar(currentPage)
+                showBookMarkInMainScreen()
             }
         })
 
@@ -176,8 +183,37 @@ class PdfReadActivity : BaseActivity<ActivityPdfReadBinding>(),
         popupReaderMenu.setTitle(viewModel.getTitle())
 
         binding.hiddenCornerBtn.setOnClickListener {
-            Log.v("save page", "saved")
+            showBookmarkDialog()
         }
+
+        supportFragmentManager.setFragmentResultListener(
+            BookmarkDialog.REQUEST_KEY, this
+        ) { _, bundle ->
+            val name = bundle.getString(BookmarkDialog.RESULT_NAME) ?: ""
+            val page = bundle.getInt(BookmarkDialog.RESULT_PAGE)
+            viewModel.addBookmark(name, page)
+        }
+        supportFragmentManager.setFragmentResultListener(
+            BookmarkDialog.CANCEL_REQUEST_KEY, this
+        ) { _, bundle ->
+            val page = bundle.getInt(BookmarkDialog.RESULT_PAGE)
+            viewModel.removeBookmark(page)
+        }
+    }
+
+    private fun showBookmarkDialog() {
+        val lm = binding.pdfRecyclerView.layoutManager as? LinearLayoutManager ?: return
+        val firstPage = lm.findFirstVisibleItemPosition()
+        BookmarkDialog.newInstance(firstPage)
+            .show(supportFragmentManager, "bookmark_dialog")
+    }
+
+
+    private fun showBookMarkInMainScreen() {
+        viewModel.showBookMarkInMainScreen(
+            binding.pdfRecyclerView,
+            binding.highlightPointerView
+        )
     }
 
     fun onOrientationChanged() {
@@ -186,8 +222,8 @@ class PdfReadActivity : BaseActivity<ActivityPdfReadBinding>(),
             val screenWidth = binding.container.width
             viewModel.updatePageSize(screenWidth) {
                 adapter.updatePageSizes(viewModel.pageSizes)
+                viewModel.loadConfirmedHighlight()
             }
-            viewModel.loadConfirmedHighlight()
         }
     }
 
@@ -235,7 +271,8 @@ class PdfReadActivity : BaseActivity<ActivityPdfReadBinding>(),
 
 
             if (wordsInPointer.isNotEmpty()) {
-                val wordsByPage: Map<Int, List<WordInfo>> = wordsInPointer.groupBy { it.pageIndex }
+                val wordsByPage: Map<Int, List<WordInfo>> =
+                    wordsInPointer.groupBy { it.pageIndex }
                 viewModel.clearSelectedHighlight()
                 for ((page, words) in wordsByPage) {
                     val itemView = binding.pdfRecyclerView.measureItemAt(page)
@@ -256,7 +293,11 @@ class PdfReadActivity : BaseActivity<ActivityPdfReadBinding>(),
 
                 if (isStartPointer) {
                     startPointer =
-                        viewModel.updateStartPointerMove(wordsInPointer, startPointer, endPointer)
+                        viewModel.updateStartPointerMove(
+                            wordsInPointer,
+                            startPointer,
+                            endPointer
+                        )
                     val start = pointerInOverlay(startPointer)
                     pdfTouchHandler.updatePointer(start, endPointerIndex)
                 } else {
@@ -289,8 +330,9 @@ class PdfReadActivity : BaseActivity<ActivityPdfReadBinding>(),
             viewModel.pageBitmaps.collect { (index, bmp) ->
                 adapter.updateBitmap(index, bmp)
                 adapter.updateConfirmedMarks(index)
-                if (isTheFirstTime && viewModel.areVisiblePagesReady(binding.pdfRecyclerView)){
+                if (isTheFirstTime && viewModel.areVisiblePagesReady(binding.pdfRecyclerView)) {
                     loadVisiblePagesWords()
+                    showBookMarkInMainScreen()
                     isTheFirstTime = false
                 }
             }
@@ -302,6 +344,12 @@ class PdfReadActivity : BaseActivity<ActivityPdfReadBinding>(),
                 adapter.updateSelectedMarks(pageIndex)
             }
         }
+
+        viewModel.bookmarks.observe(this) { bookmarks ->
+            val bookmarkedPages = bookmarks.mapNotNull { it.pageNumber }.toSet()
+            adapter.setBookmarks(bookmarkedPages)
+        }
+
         viewModel.voicedHighlight.observe(this) { highlights ->
             clearVoicedHighlights()
             highlights.forEach { (pageIndex, mark) ->
@@ -364,7 +412,6 @@ class PdfReadActivity : BaseActivity<ActivityPdfReadBinding>(),
         } else {
             lm.scrollToPositionWithOffset(currentPage, 0)
         }
-
     }
 
     override fun captureItemsWithOffset(): Pair<Bitmap, Int> {
@@ -379,7 +426,8 @@ class PdfReadActivity : BaseActivity<ActivityPdfReadBinding>(),
             val isTapInConfirm = viewModel.isTapInConfirmed(pageIndex, x, y - child.y)
             if (isTapInConfirm) {
                 showPopup()
-                val isNote = !selectedHighlights.values.firstOrNull()?.contentNote.isNullOrEmpty()
+                val isNote =
+                    !selectedHighlights.values.firstOrNull()?.contentNote.isNullOrEmpty()
                 if (isNote) {
                     showNoteDialog(false)
                 }
@@ -444,14 +492,6 @@ class PdfReadActivity : BaseActivity<ActivityPdfReadBinding>(),
         if (child != null) {
             val pageIndex = binding.pdfRecyclerView.getChildAdapterPosition(child)
 
-//            val words = viewModel.coordinatesPdfTouch(
-//                child.width,
-//                child.height,
-//                x,
-//                y - child.y,
-//                pageIndex,
-//            )
-
             val words = viewModel.pageWords[pageIndex]
             if (words != null) {
                 val pointWords = viewModel.coordinatesPdfTouch(
@@ -480,7 +520,8 @@ class PdfReadActivity : BaseActivity<ActivityPdfReadBinding>(),
                             .thenBy { it.left }
                     )
 
-                    val startPointer = PointF(sorted.first().left, sorted.first().bottom + child.y)
+                    val startPointer =
+                        PointF(sorted.first().left, sorted.first().bottom + child.y)
                     val endPointer = PointF(sorted.last().right, sorted.last().bottom + child.y)
 
                     if (coordinatesPdfTouch.isNotEmpty()) {
@@ -651,7 +692,8 @@ class PdfReadActivity : BaseActivity<ActivityPdfReadBinding>(),
                             try {
                                 startActivity(browserIntent)
                             } catch (_: Exception) {
-                                Toast.makeText(this, "Browser not found", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(this, "Browser not found", Toast.LENGTH_SHORT)
+                                    .show()
                             }
 
                         } else {
@@ -674,7 +716,8 @@ class PdfReadActivity : BaseActivity<ActivityPdfReadBinding>(),
                             try {
                                 startActivity(intent)
                             } catch (_: Exception) {
-                                Toast.makeText(this, "Cannot open app", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(this, "Cannot open app", Toast.LENGTH_SHORT)
+                                    .show()
                             }
                         }
                     }
@@ -753,7 +796,11 @@ class PdfReadActivity : BaseActivity<ActivityPdfReadBinding>(),
     }
 
     override fun onClickVolumeUp() {
-        viewModel.getLocationScreen(binding.pdfRecyclerView, binding.container, statusBarHeight())
+        viewModel.getLocationScreen(
+            binding.pdfRecyclerView,
+            binding.container,
+            statusBarHeight()
+        )
     }
 
     fun statusBarHeight(): Int {
@@ -877,6 +924,7 @@ class PdfReadActivity : BaseActivity<ActivityPdfReadBinding>(),
             pageIndex,
             RectF()
         )
+        popupReaderMenu.hideMenu()
     }
 
     override fun moveToHighlight(pageIndex: Int, firstRect: RectF) {
@@ -884,13 +932,24 @@ class PdfReadActivity : BaseActivity<ActivityPdfReadBinding>(),
             pageIndex,
             firstRect
         )
+        popupReaderMenu.hideMenu()
     }
 
     override fun onSeekBarChangeToPage(pageIndex: Int) {
         val lm = binding.pdfRecyclerView.layoutManager as LinearLayoutManager
-        lm.scrollToPositionWithOffset(pageIndex,0)
+        lm.scrollToPositionWithOffset(pageIndex, 0)
         viewModel.preload(pageIndex)
         Log.v("Page preload renderPageAsync Ready", pageIndex.toString())
+    }
+
+    override fun getListBookmark(): List<BookmarkItem> {
+        return viewModel.getBookmarkForToc()
+    }
+
+    override fun moveToPage(pageIndex: Int) {
+        val lm = binding.pdfRecyclerView.layoutManager as LinearLayoutManager
+        lm.scrollToPositionWithOffset(pageIndex, 0)
+        popupReaderMenu.hideMenu()
     }
 
     private fun showError(message: String) {

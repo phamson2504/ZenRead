@@ -69,14 +69,19 @@ import kotlin.math.abs
 import kotlin.math.sqrt
 import android.content.res.Configuration
 import androidx.core.graphics.toColorInt
+import com.zenread.book.domain.model.Bookmark
+import com.zenread.book.domain.model.BookmarkItem
 import com.zenread.book.domain.repository.PageCountManager
+import com.zenread.book.domain.service.BookMarkService
 import com.zenread.book.presentation.pdf.ReadingPosition
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withContext
 import kotlin.collections.get
+import kotlin.collections.mapNotNull
 
 @HiltViewModel
 class PdfReadViewModel @Inject constructor(
@@ -85,7 +90,8 @@ class PdfReadViewModel @Inject constructor(
     private val diskCacheManager: DiskCacheManager,
     private val pdfTextParser: PdfTextParser,
     private val highlightService: HighlightService,
-    private val pageCountManager: PageCountManager
+    private val pageCountManager: PageCountManager,
+    private val bookMarkService: BookMarkService
 ) : ViewModel() {
 
     private val deviceProfile = DeviceProfileManager(application)
@@ -114,6 +120,9 @@ class PdfReadViewModel @Inject constructor(
     private val _confirmedHighlight =
         MutableLiveData<MutableMap<Int, MutableList<PageMark>>>(mutableMapOf())
     val confirmedHighlight: LiveData<MutableMap<Int, MutableList<PageMark>>> = _confirmedHighlight
+
+    private val _bookmarks = MutableLiveData<List<Bookmark>>(emptyList())
+    val bookmarks: LiveData<List<Bookmark>> = _bookmarks
 
     private var tts: TextToSpeech? = null
 
@@ -1304,6 +1313,54 @@ class PdfReadViewModel @Inject constructor(
         }
     }
 
+
+    fun addBookmark(note: String, pageIndex: Int) {
+        viewModelScope.launch {
+            val newBookmark = Bookmark(bookId = bookId, pageNumber = pageIndex, note = note)
+            bookMarkService.insert(note, bookId, pageIndex)
+            _bookmarks.value = _bookmarks.value.orEmpty() + newBookmark
+        }
+    }
+
+    fun removeBookmark(pageIndex: Int){
+        viewModelScope.launch {
+            bookMarkService.deleteByBookAndPage(bookId, pageIndex)
+            _bookmarks.value = _bookmarks.value?.filterNot { it.pageNumber == pageIndex }
+        }
+    }
+
+    fun getBookmark() {
+        viewModelScope.launch {
+            val result = bookMarkService.getBookmarksByBook(bookId)
+            _bookmarks.value = result
+        }
+    }
+
+    fun getBookmarkForToc(): List<BookmarkItem> {
+        return _bookmarks.value?.map { bookmark ->
+            BookmarkItem(
+                title = bookmark.note ?: "Bookmark",
+                page = bookmark.pageNumber ?: 0,
+                firstRect = RectF()
+            )
+        } ?: emptyList()
+    }
+
+    fun showBookMarkInMainScreen(
+        recyclerView: RecyclerView,
+        highlightPointerView: HighlightPointerView
+    ) {
+        val lm = recyclerView.layoutManager as? LinearLayoutManager ?: return
+        val firstPage = lm.findFirstVisibleItemPosition()
+
+        val bookmarkedPages = _bookmarks.value
+            ?.mapNotNull { it.pageNumber }
+            ?.toSet()
+            .orEmpty()
+
+        highlightPointerView.updateShowBookmark(firstPage in bookmarkedPages)
+    }
+
     fun updateSelectedHighlights(
         pageIndex: Int,
         marks: List<RectF>,
@@ -1630,9 +1687,11 @@ class PdfReadViewModel @Inject constructor(
             isPageRendered(page)
         }
     }
+
     fun isPageRendered(index: Int): Boolean {
         return cache.get(index) != null
     }
+
     fun renderPageAsync(index: Int) {
 
         if (cache.get(index) != null) return

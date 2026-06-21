@@ -10,6 +10,8 @@ import android.graphics.Path
 import android.graphics.PointF
 import android.graphics.RectF
 import android.util.AttributeSet
+import android.util.Log
+import android.view.MotionEvent
 import android.view.View
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.createBitmap
@@ -29,7 +31,7 @@ class MarksOverlay @JvmOverloads constructor(
     }
 
     data class Highlight(
-        val rectList: List<RectF>,
+        var rectList: List<RectF>,
         val marksState: MarksState,
         val id: Long? = null,
         var color: Int? = null,
@@ -46,12 +48,6 @@ class MarksOverlay @JvmOverloads constructor(
 
     private var isBookmark = false
 
-//    private var startPointerBitmap: Bitmap? = null
-//    private var endPointerBitmap: Bitmap? = null
-//
-//    private var startPointerRect: RectF? = null
-//    private var endPointerRect: RectF? = null
-
     fun setSelectedMarks(marks: List<RectF>) {
         clearSelectedMarks()
         if (marks.isNotEmpty()) highlights.add(Highlight(marks, MarksState.LONG_PRESSED))
@@ -60,6 +56,12 @@ class MarksOverlay @JvmOverloads constructor(
 
     fun setIsBookmark() {
         isBookmark = true
+        invalidate()
+    }
+
+    fun setDeleteBookmark(){
+        isBookmark = false
+        invalidate()
     }
 
     fun setVoicedMarks(marks: List<RectF>) {
@@ -91,7 +93,7 @@ class MarksOverlay @JvmOverloads constructor(
                 val highlight = highlights.find { it.id == confirmId }
                 highlight?.color = color
                 highlight?.contentNote = !contentNote.isNullOrBlank()
-
+                highlight?.rectList = marks
             }
         }
         invalidate()
@@ -177,8 +179,9 @@ class MarksOverlay @JvmOverloads constructor(
             }
         }
 
-//        if (isBookmark) {
-           drawBookmark(canvas)
+        if (isBookmark) {
+            drawBookmark(canvas)
+        }
 
 //        startPointer?.let { sp ->
 //            val bmp = getStartPointerBitmap()
@@ -206,8 +209,8 @@ class MarksOverlay @JvmOverloads constructor(
     }
 
     private fun drawBookmark(canvas: Canvas) {
-        val w = 36.dp()
-        val h = 54.dp()
+        val w = 18 .dp()
+        val h = 28 .dp()
 
         val left = width - w
 
@@ -215,7 +218,7 @@ class MarksOverlay @JvmOverloads constructor(
             moveTo(left.toFloat(), 0f)
             lineTo(width.toFloat(), 0f)
             lineTo(width.toFloat(), h.toFloat())
-            lineTo((left + w / 2).toFloat(), (h - 12.dp()).toFloat())
+            lineTo((left + w / 2).toFloat(), (h - 6 .dp()).toFloat())
             lineTo(left.toFloat(), h.toFloat())
             close()
         }

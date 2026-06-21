@@ -97,17 +97,26 @@ class PopupReaderMenu(val context: Context, parent: ViewGroup) {
             )
 
             popupTocBinding.recyclerView.layoutManager = LinearLayoutManager(context)
+
             val adapterToc = CatalogueAdapter(tocList) { page ->
                 popupWindow.dismiss()
                 listener?.moveToPageClicked(page - 1)
             }
+
             popupTocBinding.recyclerView.adapter = adapterToc
 
             val listHighlight = listener?.getListHighlight() ?: emptyList()
             val adapterHighlight = BookmarkAdapter(listHighlight) { bookmark ->
-                popupWindow.dismiss()
                 listener?.moveToHighlight(bookmark.page, bookmark.firstRect)
+                popupWindow.dismiss()
             }
+
+            val listBookmark = listener?.getListBookmark() ?: emptyList()
+            val adapterBookmark = BookmarkAdapter(listBookmark) { bookmark ->
+                popupWindow.dismiss()
+                listener?.moveToPage(bookmark.page)
+            }
+
 
             popupTocBinding.tabLayout.addOnTabSelectedListener(object :
                 TabLayout.OnTabSelectedListener {
@@ -115,9 +124,9 @@ class PopupReaderMenu(val context: Context, parent: ViewGroup) {
                     val adapter = when (tab.position) {
                         0 -> adapterToc
                         2 -> adapterHighlight
-                        else -> null
+                        else -> adapterBookmark
                     }
-                    adapter?.let { adapter -> popupTocBinding.recyclerView.adapter = adapter }
+                    adapter.let { adapter -> popupTocBinding.recyclerView.adapter = adapter }
                 }
 
                 override fun onTabUnselected(tab: TabLayout.Tab) {}
